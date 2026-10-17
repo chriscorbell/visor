@@ -1,0 +1,73 @@
+# Every push to main publishes a signed release tagged visor-<run number>, and
+# so does running this workflow by hand on main. visor on the tablet checks
+# GitHub Releases every 15 minutes and installs anything newer by itself.
+name: Android
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build
+        run: ./gradlew --no-daemon assembleDebug assembleRelease lint
+
+  release:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VISOR_RELEASE: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build the signed APK
+        env:
+          KEYSTORE_BASE64: ${{ secrets.VISOR_ANDROID_KEYSTORE_BASE64 }}
+          VISOR_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.VISOR_ANDROID_KEYSTORE_PASSWORD }}
+          VISOR_ANDROID_KEY_ALIAS: ${{ secrets.VISOR_ANDROID_KEY_ALIAS }}
+          VISOR_ANDROID_KEY_PASSWORD: ${{ secrets.VISOR_ANDROID_KEY_PASSWORD }}
+        run: |
+          export VISOR_ANDROID_KEYSTORE="$RUNNER_TEMP/release.jks"
+          echo "$KEYSTORE_BASE64" | base64 -d > "$VISOR_ANDROID_KEYSTORE"
+          ./gradlew --no-daemon assembleRelease
+          cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/visor.apk"
+      # The tablet only accepts updates signed with the key it was installed
+      # with, so a release signed with anything else must never be published.
+      - name: Check the signing certificate
+        run: |
+          apksigner="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/apksigner"
+          actual="$("$apksigner" verify --print-certs "$RUNNER_TEMP/visor.apk" | sed -n 's/.*certificate SHA-256 digest: //p' | head -1 | tr -d ':' | tr a-f A-F)"
+          expected="$(tr -d ':\n' < release-certificate.sha256)"
+          test "$actual" = "$expected" || { echo "APK is signed with $actual, expected $expected"; exit 1; }
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "visor-$VISOR_RELEASE" "$RUNNER_TEMP/visor.apk" \
+            --title "visor $VISOR_RELEASE" \
+            --notes "Built from ${GITHUB_SHA::7}. The desk display installs this on its own." \
+            --target "$GITHUB_SHA" --latest

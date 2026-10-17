@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A visor slit: a cyan bar across a dark, angled plate. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#03060A"
+        android:pathData="M14,14 L82,14 L94,26 L94,94 L14,94 Z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#3300E5FF"
+        android:strokeWidth="2"
+        android:pathData="M14,14 L82,14 L94,26 L94,94 L14,94 Z" />
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M26,48 L82,48 L76,60 L32,60 Z" />
+    <path
+        android:fillColor="#FF2E88"
+        android:pathData="M70,51 L76,51 L74,57 L68,57 Z" />
+</vector>
