@@ -34,11 +34,38 @@ class MainActivity : Activity(), Beszel.Listener, FeedPlayer.Listener {
     private var wifiLock: WifiManager.WifiLock? = null
     private var link = Beszel.Link.CONNECTING
 
-    /** Rechecks for machines that went quiet between the hub's status updates. */
-    private val staleCheck = object : Runnable {
+    /** Machines with a sample the screen hasn't shown yet. */
+    private val fresh = HashSet<Node>()
+    private var logRevision = -1
+    private var beat = false
+
+    /**
+     * Everything on screen changes on this one beat, twice a second, so the
+     * tablet draws a single frame for it. Each machine's sample arrives at its
+     * own moment in the second; drawing each one as it came would mean a
+     * dozen full frames a second.
+     */
+    private val heartbeat = object : Runnable {
         override fun run() {
-            dashboard.machines.forEach { tile -> tile.node?.let { if (!it.live) tile.bind(it) } }
-            ui.postDelayed(this, 2_000)
+            beat = !beat
+            if (beat) {
+                for (tile in dashboard.machines) {
+                    val node = tile.node ?: continue
+                    // A machine that went quiet between the hub's status updates turns stale.
+                    if (node in fresh || !node.live) tile.bind(node)
+                }
+                fresh.clear()
+                dashboard.fleetTile.bind(fleet)
+                dashboard.header.invalidate()
+            }
+            if (fleet.revision != logRevision) {
+                logRevision = fleet.revision
+                dashboard.logTile.bind(fleet)
+            }
+            dashboard.logTile.pulse(beat)
+            dashboard.camera.pulse(beat)
+            dashboard.machines.forEach { it.pulse(beat) }
+            ui.postDelayed(this, 500 - System.currentTimeMillis() % 500)
         }
     }
 
@@ -101,12 +128,12 @@ class MainActivity : Activity(), Beszel.Listener, FeedPlayer.Listener {
         player.start()
         hub.start()
         updater.start()
-        ui.post(staleCheck)
+        ui.post(heartbeat)
     }
 
     override fun onStop() {
         ui.removeCallbacks(landscape)
-        ui.removeCallbacks(staleCheck)
+        ui.removeCallbacks(heartbeat)
         updater.stop()
         hub.stop()
         player.stop()
@@ -176,11 +203,7 @@ class MainActivity : Activity(), Beszel.Listener, FeedPlayer.Listener {
 
     override fun onMetrics(id: String, stats: JSONObject, info: JSONObject) {
         ui.post {
-            val revision = fleet.revision
-            val node = fleet.sample(id, stats, info) ?: return@post
-            dashboard.machines.firstOrNull { it.node === node }?.bind(node)
-            dashboard.fleetTile.bind(fleet)
-            if (fleet.revision != revision) dashboard.logTile.bind(fleet)
+            fleet.sample(id, stats, info)?.let(fresh::add)
         }
     }
 
@@ -190,7 +213,7 @@ class MainActivity : Activity(), Beszel.Listener, FeedPlayer.Listener {
         dashboard.machines.forEachIndexed { i, tile ->
             slots[i]?.let(tile::bind) ?: tile.clear(Fleet.ORDER.getOrNull(i))
         }
-        dashboard.fleetTile.bind(fleet)
+        dashboard.fleetTile.bindNow(fleet)
         dashboard.logTile.bind(fleet)
         dashboard.header.online = fleet.online
         dashboard.header.total = fleet.nodes.size

@@ -26,14 +26,18 @@ abstract class Panel(context: Context, protected val theme: Theme) : View(contex
     }
 }
 
-/** Eases a set of numbers toward new targets, redrawing [view] as it goes. */
+/**
+ * Eases a set of numbers toward new targets, redrawing [view] as it goes.
+ * Small changes, which is most of them, jump straight there: animating every
+ * once-a-second update would keep the tablet redrawing without pause.
+ */
 class Tween(private val view: View, size: Int) {
     val shown = FloatArray(size)
     private val from = FloatArray(size)
     private val to = FloatArray(size)
     private var first = true
     private val animator = ValueAnimator.ofFloat(0f, 1f).apply {
-        duration = 450
+        duration = 300
         interpolator = easeOut
         addUpdateListener {
             val f = it.animatedValue as Float
@@ -44,11 +48,13 @@ class Tween(private val view: View, size: Int) {
 
     fun target(vararg values: Float) {
         animator.cancel()
+        var jump = 0f
         for (i in values.indices) {
-            from[i] = if (first) values[i] else shown[i]
+            from[i] = shown[i]
             to[i] = values[i]
+            jump = maxOf(jump, kotlin.math.abs(values[i] - shown[i]))
         }
-        if (first) {
+        if (first || jump < ANIMATE_FROM) {
             first = false
             System.arraycopy(values, 0, shown, 0, values.size)
             view.invalidate()
@@ -56,15 +62,20 @@ class Tween(private val view: View, size: Int) {
             animator.start()
         }
     }
+
+    private companion object {
+        /** Percentage points: smaller changes aren't animated. */
+        const val ANIMATE_FROM = 3f
+    }
 }
 
 /** One machine: its name, health, four load bars and a minute of CPU history. */
 class MachineTile(context: Context, theme: Theme) : Panel(context, theme) {
     var node: Node? = null
         private set
-    private val tween = Tween(this, 5)
+    private val tween = Tween(this, 4)
 
-    private val name = theme.text(15f, Theme.TEXT, bold = true).also { theme.glow(it, 5f, Theme.CYAN) }
+    private val name = theme.text(15f, Theme.TEXT, bold = true)
     private val role = theme.text(9.5f, Theme.MUTED).apply { letterSpacing = 0.08f }
     private val status = theme.text(10f, Theme.MUTED, align = Paint.Align.RIGHT)
     private val label = theme.text(10f, Theme.MUTED, bold = true)
@@ -80,12 +91,13 @@ class MachineTile(context: Context, theme: Theme) : Panel(context, theme) {
     }
     private val scaleLabel = theme.text(8f, Theme.withAlpha(Theme.MUTED, 200))
     private var blink = false
-    private val blinker = object : Runnable {
-        override fun run() {
-            blink = !blink
-            invalidate()
-            postDelayed(this, 900)
-        }
+
+    /** The heartbeat's half-second beat: a silent machine's warning blinks with it. */
+    fun pulse(on: Boolean) {
+        val n = node ?: return
+        if (n.live) return
+        blink = on
+        invalidate()
     }
 
     /** The fleet machine this slot is kept for, while it has no agent reporting. */
@@ -94,16 +106,45 @@ class MachineTile(context: Context, theme: Theme) : Panel(context, theme) {
     fun clear(expected: String?) {
         node = null
         awaiting = expected
-        removeCallbacks(blinker)
         invalidate()
     }
 
+    // Text that changes at most once a second, prepared in bind() rather than on every frame.
+    private var title = ""
+    private var roleText = ""
+    private var stateText = ""
+    private var stateColor = Theme.MUTED
+    private var fourthKey: String? = null
+    private var netText = ""
+    private var extrasText = ""
+
     fun bind(next: Node) {
         node = next
-        tween.target(next.cpu, next.mem, next.disk, fourth(next)?.second ?: 0f, if (next.live) 1f else 0f)
-        val down = !next.live
-        removeCallbacks(blinker)
-        if (down) postDelayed(blinker, 900)
+        val four = fourth(next)
+        fourthKey = four?.first
+        title = next.name.uppercase(Locale.US)
+        roleText = Fleet.ROLES[next.name] ?: next.gpuName?.uppercase(Locale.US) ?: ""
+        stateText = when {
+            next.live -> "UP ${uptime(next.uptimeSec)}"
+            next.status == Status.UP -> "STALE"
+            next.status == Status.DOWN -> "OFFLINE"
+            next.status == Status.PAUSED -> "PAUSED"
+            else -> "PENDING"
+        }
+        stateColor = when {
+            next.live -> Theme.GREEN
+            next.status == Status.UP -> Theme.AMBER
+            next.status == Status.DOWN -> Theme.MAGENTA
+            else -> Theme.MUTED
+        }
+        dot.color = stateColor
+        dot.setShadowLayer(dp(5f), 0f, 0f, stateColor)
+        netText = "↑${rate(next.netUpBps)} ↓${rate(next.netDownBps)}"
+        extrasText = buildList {
+            if (four?.first != "TMP") next.tempC?.let { add("${it.toInt()}°C") }
+            next.load1?.let { add("LA %.2f".format(Locale.US, it)) }
+        }.joinToString("  ")
+        tween.target(next.cpu, next.mem, next.disk, four?.second ?: 0f)
         invalidate()
     }
 
@@ -113,11 +154,6 @@ class MachineTile(context: Context, theme: Theme) : Panel(context, theme) {
         n.pool != null -> "VOL" to n.pool!!.pct
         n.tempC != null -> "TMP" to n.tempC!!
         else -> null
-    }
-
-    override fun onDetachedFromWindow() {
-        removeCallbacks(blinker)
-        super.onDetachedFromWindow()
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -131,25 +167,11 @@ class MachineTile(context: Context, theme: Theme) : Panel(context, theme) {
         // Name, status and role.
         val top = p + dp(14f)
         name.color = if (live) Theme.TEXT else Theme.MUTED
-        canvas.drawText(n.name.uppercase(Locale.US), p, top, name)
-        val stateText = when {
-            live -> "UP ${uptime(n.uptimeSec)}"
-            n.status == Status.UP -> "STALE"
-            n.status == Status.DOWN -> "OFFLINE"
-            n.status == Status.PAUSED -> "PAUSED"
-            else -> "PENDING"
-        }
+        canvas.drawText(title, p, top, name)
         val right = w - p - dp(8f)
         canvas.drawText(stateText, right, top, status)
-        dot.color = when {
-            live -> Theme.GREEN
-            n.status == Status.UP -> Theme.AMBER
-            n.status == Status.DOWN -> Theme.MAGENTA
-            else -> Theme.MUTED
-        }
-        dot.setShadowLayer(dp(5f), 0f, 0f, dot.color)
         canvas.drawCircle(right - status.measureText(stateText) - dp(8f), top - dp(3.5f), dp(3f), dot)
-        canvas.drawText(Fleet.ROLES[n.name] ?: n.gpuName?.uppercase(Locale.US) ?: "", p, top + dp(16f), role)
+        canvas.drawText(roleText, p, top + dp(16f), role)
 
         if (!live) {
             drawLost(canvas, w, h, n)
@@ -159,10 +181,11 @@ class MachineTile(context: Context, theme: Theme) : Panel(context, theme) {
         // Load bars.
         val barLeft = p + dp(34f)
         val barRight = w - p - dp(46f)
-        val rows = listOfNotNull("CPU" to tween.shown[0], "MEM" to tween.shown[1], "DSK" to tween.shown[2],
-            fourth(n)?.let { it.first to tween.shown[3] })
         var y = top + dp(30f)
-        for ((key, pct) in rows) {
+        val rows = if (fourthKey != null) 4 else 3
+        for (row in 0 until rows) {
+            val key = ROW_KEYS[row] ?: fourthKey!!
+            val pct = tween.shown[row]
             canvas.drawText(key, p, y + dp(7f), label)
             theme.drawBar(canvas, barLeft, y, barRight - barLeft, dp(7f), pct)
             value.color = Theme.level(pct)
@@ -185,12 +208,12 @@ class MachineTile(context: Context, theme: Theme) : Panel(context, theme) {
 
         // Network, temperature and load along the bottom.
         val base = h - p
-        canvas.drawText("↑${rate(n.netUpBps)} ↓${rate(n.netDownBps)}", p, base, foot)
-        val extras = buildList {
-            if (fourth(n)?.first != "TMP") n.tempC?.let { add("${it.toInt()}°C") }
-            n.load1?.let { add("LA %.2f".format(it)) }
-        }.joinToString("  ")
-        canvas.drawText(extras, w - p, base, footRight)
+        canvas.drawText(netText, p, base, foot)
+        canvas.drawText(extrasText, w - p, base, footRight)
+    }
+
+    private companion object {
+        val ROW_KEYS = arrayOf<String?>("CPU", "MEM", "DSK", null)
     }
 
     /** A slot no machine has claimed yet. */
@@ -242,8 +265,21 @@ class FleetTile(context: Context, theme: Theme) : Panel(context, theme) {
     private var up = 0L
     private var down = 0L
     private var lastPush = 0L
+    private var countText = "00/00"
+    private var netText = ""
+    private var ramText = ""
+
+    /** Redraws right away, for when machines come or go. */
+    fun bindNow(fleet: Fleet) {
+        lastPush = 0L
+        bind(fleet)
+    }
 
     fun bind(fleet: Fleet) {
+        // Machines report one by one through each second; the summary moves once a second.
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastPush < 950) return
+        lastPush = now
         val nodes = fleet.nodes.values
         val live = nodes.filter { it.live }
         online = fleet.online
@@ -253,12 +289,10 @@ class FleetTile(context: Context, theme: Theme) : Panel(context, theme) {
         up = live.sumOf { it.netUpBps }
         down = live.sumOf { it.netDownBps }
         val cpu = if (live.isEmpty()) 0f else live.map { it.cpu }.average().toFloat()
-        // Samples arrive machine by machine; the history takes one point a second.
-        val now = SystemClock.elapsedRealtime()
-        if (now - lastPush >= 950) {
-            history.push(cpu)
-            lastPush = now
-        }
+        history.push(cpu)
+        countText = "%02d/%02d".format(Locale.US, online, total)
+        netText = "↑${rate(up)} ↓${rate(down)}"
+        ramText = "${size(memUsed)} / ${size(memTotal)} RAM"
         tween.target(cpu, if (memTotal > 0) memUsed / memTotal * 100f else 0f)
     }
 
@@ -268,7 +302,7 @@ class FleetTile(context: Context, theme: Theme) : Panel(context, theme) {
         val h = height.toFloat()
         val p = pad
         canvas.drawText("FLEET // AGGREGATE", p, p + dp(10f), title)
-        val count = "%02d/%02d".format(online, total)
+        val count = countText
         big.color = if (online == total && total > 0) Theme.TEXT else Theme.AMBER
         canvas.drawText(count, p, p + dp(44f), big)
         canvas.drawText("NODES ONLINE", p + big.measureText(count) + dp(10f), p + dp(44f), small)
@@ -285,8 +319,8 @@ class FleetTile(context: Context, theme: Theme) : Panel(context, theme) {
         }
         spark.set(p, y + dp(2f), w - p, h - p - dp(16f))
         theme.drawSparkline(canvas, spark, history)
-        canvas.drawText("↑${rate(up)} ↓${rate(down)}", p, h - p, foot)
-        canvas.drawText("${size(memUsed)} / ${size(memTotal)} RAM", w - p, h - p, footRight)
+        canvas.drawText(netText, p, h - p, foot)
+        canvas.drawText(ramText, w - p, h - p, footRight)
     }
 }
 
@@ -299,27 +333,15 @@ class LogTile(context: Context, theme: Theme) : Panel(context, theme) {
     private val cursor = theme.fill(Theme.CYAN)
     private var events: List<Event> = emptyList()
     private var cursorOn = true
-    private val blinker = object : Runnable {
-        override fun run() {
-            cursorOn = !cursorOn
-            invalidate()
-            postDelayed(this, 530)
-        }
-    }
 
     fun bind(fleet: Fleet) {
         events = fleet.events.toList()
         invalidate()
     }
 
-    override fun onAttachedToWindow() {
-        super.onAttachedToWindow()
-        post(blinker)
-    }
-
-    override fun onDetachedFromWindow() {
-        removeCallbacks(blinker)
-        super.onDetachedFromWindow()
+    fun pulse(on: Boolean) {
+        cursorOn = on
+        invalidate()
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -361,27 +383,15 @@ class CameraHud(context: Context, theme: Theme) : Panel(context, theme) {
     private val shade = theme.fill(Theme.withAlpha(Theme.BG, 150))
     private var feed = FeedState.CONNECTING
     private var recOn = true
-    private val blinker = object : Runnable {
-        override fun run() {
-            recOn = !recOn
-            invalidate()
-            postDelayed(this, 800)
-        }
-    }
 
     fun setState(next: FeedState) {
         feed = next
         invalidate()
     }
 
-    override fun onAttachedToWindow() {
-        super.onAttachedToWindow()
-        post(blinker)
-    }
-
-    override fun onDetachedFromWindow() {
-        removeCallbacks(blinker)
-        super.onDetachedFromWindow()
+    fun pulse(on: Boolean) {
+        recOn = on
+        invalidate()
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
@@ -450,22 +460,6 @@ class Header(context: Context, theme: Theme) : View(context) {
         }
     var online = 0
     var total = 0
-    private val ticker = object : Runnable {
-        override fun run() {
-            invalidate()
-            postDelayed(this, 1000 - System.currentTimeMillis() % 1000)
-        }
-    }
-
-    override fun onAttachedToWindow() {
-        super.onAttachedToWindow()
-        post(ticker)
-    }
-
-    override fun onDetachedFromWindow() {
-        removeCallbacks(ticker)
-        super.onDetachedFromWindow()
-    }
 
     override fun onDraw(canvas: Canvas) {
         val w = width.toFloat()
