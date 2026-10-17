@@ -114,16 +114,23 @@ class MachineTile(context: Context, theme: Theme) : Panel(context, theme) {
     private var roleText = ""
     private var stateText = ""
     private var stateColor = Theme.MUTED
+    private var thirdKey = "DSK"
     private var fourthKey: String? = null
+    private var poolAlert: String? = null
     private var netText = ""
     private var extrasText = ""
 
     fun bind(next: Node) {
         node = next
+        val three = third(next)
         val four = fourth(next)
+        thirdKey = three.first
         fourthKey = four?.first
         title = next.name.uppercase(Locale.US)
-        roleText = Fleet.ROLES[next.name] ?: next.gpuName?.uppercase(Locale.US) ?: ""
+        val role = Fleet.ROLES[next.name] ?: next.gpuName?.uppercase(Locale.US) ?: ""
+        val zfs = next.pool?.takeIf { it.zfs }
+        roleText = if (zfs != null) "$role // ${zfs.name.uppercase(Locale.US)} ${size(zfs.usedGb)}/${size(zfs.totalGb)}" else role
+        poolAlert = next.unhealthyPools.entries.firstOrNull()?.let { "${it.key.uppercase(Locale.US)} ${it.value}" }
         stateText = when {
             next.live -> "UP ${uptime(next.uptimeSec)}"
             next.status == Status.UP -> "STALE"
@@ -144,14 +151,21 @@ class MachineTile(context: Context, theme: Theme) : Panel(context, theme) {
             if (four?.first != "TMP") next.tempC?.let { add("${it.toInt()}°C") }
             next.load1?.let { add("LA %.2f".format(Locale.US, it)) }
         }.joinToString("  ")
-        tween.target(next.cpu, next.mem, next.disk, four?.second ?: 0f)
+        tween.target(next.cpu, next.mem, three.second, four?.second ?: 0f)
         invalidate()
     }
 
-    /** The fourth bar: the GPU, else the biggest pool, else the temperature. */
+    /**
+     * The third bar: the biggest ZFS pool where there is one, since the root
+     * disk of a TrueNAS app container says nothing; otherwise the root disk.
+     */
+    private fun third(n: Node): Pair<String, Float> =
+        n.pool?.takeIf { it.zfs }?.let { "ZFS" to it.pct } ?: ("DSK" to n.disk)
+
+    /** The fourth bar: the GPU, else another volume, else the temperature. */
     private fun fourth(n: Node): Pair<String, Float>? = when {
         n.gpu != null -> "GPU" to n.gpu!!
-        n.pool != null -> "VOL" to n.pool!!.pct
+        n.pool != null && !n.pool!!.zfs -> "VOL" to n.pool!!.pct
         n.tempC != null -> "TMP" to n.tempC!!
         else -> null
     }
@@ -171,7 +185,14 @@ class MachineTile(context: Context, theme: Theme) : Panel(context, theme) {
         val right = w - p - dp(8f)
         canvas.drawText(stateText, right, top, status)
         canvas.drawCircle(right - status.measureText(stateText) - dp(8f), top - dp(3.5f), dp(3f), dot)
-        canvas.drawText(roleText, p, top + dp(16f), role)
+        val alert = poolAlert
+        if (alert != null && live) {
+            role.color = Theme.MAGENTA
+            canvas.drawText("⚠ $alert", p, top + dp(16f), role)
+            role.color = Theme.MUTED
+        } else {
+            canvas.drawText(roleText, p, top + dp(16f), role)
+        }
 
         if (!live) {
             drawLost(canvas, w, h, n)
@@ -184,7 +205,12 @@ class MachineTile(context: Context, theme: Theme) : Panel(context, theme) {
         var y = top + dp(30f)
         val rows = if (fourthKey != null) 4 else 3
         for (row in 0 until rows) {
-            val key = ROW_KEYS[row] ?: fourthKey!!
+            val key = when (row) {
+                0 -> "CPU"
+                1 -> "MEM"
+                2 -> thirdKey
+                else -> fourthKey!!
+            }
             val pct = tween.shown[row]
             canvas.drawText(key, p, y + dp(7f), label)
             theme.drawBar(canvas, barLeft, y, barRight - barLeft, dp(7f), pct)
@@ -210,10 +236,6 @@ class MachineTile(context: Context, theme: Theme) : Panel(context, theme) {
         val base = h - p
         canvas.drawText(netText, p, base, foot)
         canvas.drawText(extrasText, w - p, base, footRight)
-    }
-
-    private companion object {
-        val ROW_KEYS = arrayOf<String?>("CPU", "MEM", "DSK", null)
     }
 
     /** A slot no machine has claimed yet. */

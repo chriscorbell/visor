@@ -21,8 +21,13 @@ class Node(val id: String) {
     /** The busiest GPU's load, or null on a machine without one. */
     var gpu: Float? = null
     var gpuName: String? = null
-    /** The biggest extra filesystem, such as a ZFS pool on the NAS. */
+    /**
+     * The biggest ZFS pool, or else the biggest extra filesystem. On the NAS
+     * and its mirror this, not the root disk, is the storage that matters.
+     */
     var pool: Volume? = null
+    /** ZFS pools whose health isn't ONLINE, by name. */
+    var unhealthyPools: Map<String, String> = emptyMap()
     var tempC: Float? = null
     var netUpBps = 0L
     var netDownBps = 0L
@@ -32,7 +37,7 @@ class Node(val id: String) {
 
     val live get() = status == Status.UP && SystemClock.elapsedRealtime() - lastSampleAt < STALE_MS
 
-    data class Volume(val name: String, val usedGb: Float, val totalGb: Float) {
+    data class Volume(val name: String, val usedGb: Float, val totalGb: Float, val zfs: Boolean = false) {
         val pct get() = if (totalGb > 0) usedGb / totalGb * 100f else 0f
     }
 
@@ -80,11 +85,23 @@ class Node(val id: String) {
             gpuName = null
         }
 
+        val zfs = stats.optJSONObject("z")
         val volumes = stats.optJSONObject("efs")
-        pool = volumes?.keys()?.asSequence()?.map { key ->
-            val v = volumes.getJSONObject(key)
-            Volume(key, v.optDouble("du").toFloat(), v.optDouble("d").toFloat())
-        }?.filter { it.totalGb > 0 }?.maxByOrNull { it.totalGb }
+        val unhealthy = HashMap<String, String>()
+        pool = if (zfs != null && zfs.length() > 0) {
+            zfs.keys().asSequence().map { key ->
+                val z = zfs.getJSONObject(key)
+                val health = z.optString("h")
+                if (health.isNotEmpty() && health != "ONLINE") unhealthy[key] = health
+                Volume(key, z.optDouble("du").toFloat(), z.optDouble("d").toFloat(), zfs = true)
+            }.filter { it.totalGb > 0 }.maxByOrNull { it.totalGb }
+        } else {
+            volumes?.keys()?.asSequence()?.map { key ->
+                val v = volumes.getJSONObject(key)
+                Volume(key, v.optDouble("du").toFloat(), v.optDouble("d").toFloat())
+            }?.filter { it.totalGb > 0 }?.maxByOrNull { it.totalGb }
+        }
+        unhealthyPools = unhealthy
 
         cpuHistory.push(cpu)
     }
@@ -196,7 +213,12 @@ class Fleet {
 
     fun sample(id: String, stats: JSONObject, info: JSONObject): Node? {
         val node = nodes[id] ?: return null
+        val wasUnhealthy = node.unhealthyPools
         node.applySample(stats, info)
+        for ((name, health) in node.unhealthyPools) {
+            if (wasUnhealthy[name] != health) log(node.name, "$name $health", Tone.ALERT)
+        }
+        for (name in wasUnhealthy.keys - node.unhealthyPools.keys) log(node.name, "$name ONLINE", Tone.GOOD)
         watch(node, "CPU", node.cpu, high = 90f, clear = 70f)
         watch(node, "MEM", node.mem, high = 90f, clear = 80f)
         watch(node, "DSK", node.disk, high = 90f, clear = 85f)
