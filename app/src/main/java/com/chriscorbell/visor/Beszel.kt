@@ -71,7 +71,8 @@ class Beszel(
                 val token = signIn(creds)
                 val systems = listSystems(token)
                 listener.onSystems(systems)
-                follow(token, systems.map { it.id }.toMutableSet()) { failures = 0 }
+                val anyUp = systems.any { it.status == "up" }
+                follow(token, systems.map { it.id }.toMutableSet(), anyUp) { failures = 0 }
             } catch (e: IOException) {
                 if (running) Log.i(TAG, "Hub link dropped: ${e.message}")
             } catch (e: RuntimeException) {
@@ -102,15 +103,16 @@ class Beszel(
      * Opens the realtime stream and dispatches its events until it drops, or
      * until it is old enough that the sign-in should be renewed.
      */
-    private fun follow(token: String, systemIds: MutableSet<String>, onLive: () -> Unit) {
+    private fun follow(token: String, systemIds: MutableSet<String>, anyUp: Boolean, onLive: () -> Unit) {
         val conn = open("GET", "/api/realtime", null).apply {
             setRequestProperty("Accept", "text/event-stream")
-            // Machines report every second; a quiet minute means the stream is dead.
-            readTimeout = 60_000
+            // Machines report every second; this long without a word means the stream is dead.
+            readTimeout = QUIET_MS.toInt()
         }
         stream = conn
         val reader = BufferedReader(InputStreamReader(conn.inputStream, Charsets.UTF_8))
         val openedAt = System.currentTimeMillis()
+        var lastSampleAt = openedAt
         var clientId: String? = null
         val topics = mutableMapOf<String, String>()
 
@@ -154,6 +156,7 @@ class Beszel(
                                 }
                             }
                             else -> topics[event]?.let { id ->
+                                lastSampleAt = System.currentTimeMillis()
                                 val sample = JSONObject(payload)
                                 val stats = sample.optJSONObject("stats")
                                 val info = sample.optJSONObject("info")
@@ -170,8 +173,13 @@ class Beszel(
                     data.append(line.substring(5).trimStart())
                 }
             }
+            val now = System.currentTimeMillis()
             // Sign in afresh now and then, long before the hub's tokens expire.
-            if (System.currentTimeMillis() - openedAt > RENEW_MS) throw IOException("renewing sign-in")
+            if (now - openedAt > RENEW_MS) throw IOException("renewing sign-in")
+            // A stream that says it's live but brings no samples is a dud. Seen
+            // right after the tablet reboots, while the hub still holds the
+            // connection from before; a fresh connection fixes it.
+            if (anyUp && now - lastSampleAt > QUIET_MS) throw IOException("no samples for ${QUIET_MS / 1000} s")
         }
     }
 
@@ -215,6 +223,7 @@ class Beszel(
         const val TAG = "visor.hub"
         const val SYSTEMS_TOPIC = "systems/*"
         const val RENEW_MS = 6 * 60 * 60_000L
+        const val QUIET_MS = 20_000L
         val RETRY_MS = longArrayOf(1_000, 2_000, 5_000, 10_000, 30_000)
 
         /**
