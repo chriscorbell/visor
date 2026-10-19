@@ -23,7 +23,7 @@ class Node(val id: String) {
     var gpuName: String? = null
     /**
      * The biggest ZFS pool, or else the biggest extra filesystem. On the NAS
-     * and its mirror this, not the root disk, is the storage that matters.
+     * this, not the root disk, is the storage that matters.
      */
     var pool: Volume? = null
     /** ZFS pools whose health isn't ONLINE, by name. */
@@ -165,23 +165,11 @@ class Fleet {
     private val alarms = HashMap<String, Long>()
 
     /**
-     * Machines by grid slot. Each fleet machine keeps its own slot whether or
-     * not it has reported yet, so the grid never shuffles; machines outside
-     * the fleet list take the slots left over.
+     * Machines by grid slot, in [ORDER]. Each keeps its own slot whether or
+     * not it has reported yet, so the grid never shuffles.
      */
-    fun slots(count: Int): List<Node?> {
-        val slots = arrayOfNulls<Node>(count)
-        val extra = ArrayList<Node>()
-        for (node in nodes.values.sortedBy { it.name }) {
-            val i = ORDER.indexOf(node.name)
-            if (i in 0 until count && slots[i] == null) slots[i] = node else extra.add(node)
-        }
-        for (node in extra) {
-            val free = (0 until count).firstOrNull { slots[it] == null && it >= ORDER.size }
-                ?: (0 until count).firstOrNull { slots[it] == null } ?: break
-            slots[free] = node
-        }
-        return slots.toList()
+    fun slots(count: Int): List<Node?> = List(count) { i ->
+        ORDER.getOrNull(i)?.let { name -> nodes.values.firstOrNull { it.name == name } }
     }
 
     val online get() = nodes.values.count { it.status == Status.UP }
@@ -258,15 +246,18 @@ class Fleet {
         const val MAX_EVENTS = 40
         const val SUSTAIN_MS = 5_000L
 
-        /** Fleet hostnames in the order the grid shows them; others follow by name. */
-        val ORDER = listOf("minicore", "llm", "nas", "backup", "cloud", "haos", "rpi5", "agent-pc", "mbp", "gaming-pc")
+        /**
+         * Fleet hostnames in the order the grid shows them. visor follows only
+         * these, so a machine the hub keeps for its history, like nas-old,
+         * stays off the screen and out of the counts.
+         */
+        val ORDER = listOf("minicore", "llm", "nas", "cloud", "haos", "rpi5", "agent-pc", "mbp", "gaming-pc")
 
         /** What each machine is for, under its name. */
         val ROLES = mapOf(
             "minicore" to "PRODUCTION DOCKER",
             "llm" to "LLM INFERENCE",
             "nas" to "PRIMARY STORAGE",
-            "backup" to "NAS MIRROR",
             "cloud" to "OCI // CHICAGO",
             "haos" to "HOME ASSISTANT",
             "rpi5" to "PXE BOOT",

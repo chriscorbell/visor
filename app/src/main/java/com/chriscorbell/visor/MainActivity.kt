@@ -77,7 +77,7 @@ class MainActivity : Activity(), Beszel.Listener, FeedPlayer.Listener {
 
         theme = Theme(this)
         player = FeedPlayer(BuildConfig.FEED_URL, this, playAudio = false)
-        hub = Beszel(BuildConfig.HUB_URL, ::credentials, this)
+        hub = Beszel(BuildConfig.HUB_URL, ::credentials, this, Fleet.ORDER::contains)
         updater = Updater(applicationContext)
 
         val surface = SurfaceView(this).apply {

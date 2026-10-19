@@ -12,8 +12,8 @@ import java.util.Locale
 
 /**
  * The screen: a header over a 4×4 grid. The Camera takes the top-right 2×2
- * block; machines fill the other cells in order, and the fleet summary and
- * the event log take the last two, under the Camera.
+ * block, and the event log the two cells under its right half. Machines fill
+ * the other cells in order, and the fleet summary takes the last one.
  */
 class Dashboard(context: Context, private val theme: Theme, val surface: SurfaceView) : ViewGroup(context) {
     val header = Header(context, theme)
@@ -54,12 +54,14 @@ class Dashboard(context: Context, private val theme: Theme, val surface: Surface
             margin + col * (cellW + gap) + cellW, gridTop + row * (cellH + gap) + cellH,
         )
 
+        fun span(from: RectF, to: RectF) = RectF(from.left, from.top, to.right, to.bottom)
+
         val slots = SLOTS.map { (col, row) -> cell(col, row) }
         machines.forEachIndexed { i, tile -> place(tile, slots[i]) }
         place(fleetTile, slots[MACHINE_SLOTS])
-        place(logTile, slots[MACHINE_SLOTS + 1])
+        place(logTile, span(cell(3, 2), cell(3, 3)))
 
-        val cam = RectF(cell(2, 0).left, cell(2, 0).top, cell(3, 1).right, cell(3, 1).bottom)
+        val cam = span(cell(2, 0), cell(3, 1))
         place(camera, cam)
         // CameraHud works out its picture area when it gets its size.
         camera.post {
@@ -85,10 +87,10 @@ class Dashboard(context: Context, private val theme: Theme, val surface: Surface
     }
 
     companion object {
-        const val MACHINE_SLOTS = 10
+        const val MACHINE_SLOTS = 9
 
-        /** Grid cells (column, row) outside the Camera's block, in reading order. */
-        val SLOTS = listOf(0 to 0, 1 to 0, 0 to 1, 1 to 1, 0 to 2, 1 to 2, 2 to 2, 3 to 2, 0 to 3, 1 to 3, 2 to 3, 3 to 3)
+        /** Grid cells (column, row) outside the Camera and the event log, in reading order. */
+        val SLOTS = listOf(0 to 0, 1 to 0, 0 to 1, 1 to 1, 0 to 2, 1 to 2, 2 to 2, 0 to 3, 1 to 3, 2 to 3)
     }
 }
 

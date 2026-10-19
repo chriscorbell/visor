@@ -17,13 +17,15 @@ import java.net.URLEncoder
  * collection, refreshed once a minute. Subscribing to a machine's
  * `rt_metrics` topic over PocketBase's realtime stream makes the hub poll that
  * machine's agent every second for as long as the subscription lasts, which
- * is what keeps visor live. Everything runs on one background thread;
+ * is what keeps visor live. Only machines whose names pass [follows] are
+ * listed or subscribed to. Everything runs on one background thread;
  * [Listener] callbacks arrive on it.
  */
 class Beszel(
     private val baseUrl: String,
     private val credentials: () -> Credentials?,
     private val listener: Listener,
+    private val follows: (name: String) -> Boolean,
 ) {
     data class Credentials(val email: String, val password: String)
 
@@ -96,7 +98,7 @@ class Beszel(
     private fun listSystems(token: String): List<SystemRecord> {
         val page = JSONObject(request("GET", "/api/collections/systems/records?perPage=200&sort=name", token))
         val items = page.getJSONArray("items")
-        return (0 until items.length()).map { SystemRecord.parse(items.getJSONObject(it)) }
+        return (0 until items.length()).map { SystemRecord.parse(items.getJSONObject(it)) }.filter { follows(it.name) }
     }
 
     /**
@@ -143,16 +145,15 @@ class Beszel(
                             SYSTEMS_TOPIC -> {
                                 val message = JSONObject(payload)
                                 val record = SystemRecord.parse(message.getJSONObject("record"))
-                                when (message.optString("action")) {
-                                    "delete" -> {
-                                        systemIds.remove(record.id)
+                                // A machine renamed out of the fleet list goes like a deleted one.
+                                if (message.optString("action") == "delete" || !follows(record.name)) {
+                                    if (systemIds.remove(record.id)) {
                                         listener.onSystemDeleted(record.id)
                                         subscribe()
                                     }
-                                    else -> {
-                                        listener.onSystem(record)
-                                        if (systemIds.add(record.id)) subscribe()
-                                    }
+                                } else {
+                                    listener.onSystem(record)
+                                    if (systemIds.add(record.id)) subscribe()
                                 }
                             }
                             else -> topics[event]?.let { id ->

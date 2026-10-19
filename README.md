@@ -4,10 +4,12 @@ A fleet dashboard for the always-on Android tablet on Chris's desk: the health a
 
 ## What it shows
 
-- **One tile per machine**, in a fixed slot: status and uptime, CPU, memory and disk, plus the GPU (or the biggest ZFS pool, or the temperature), a minute of CPU history, network rates, temperature and load.
+- **One tile per machine** in its fleet list (`Fleet.ORDER`), each in a fixed slot: status and uptime, CPU, memory and disk, plus the GPU (or the biggest ZFS pool, or the temperature), a minute of CPU history, network rates, temperature and load.
 - **The camera**, in the top-right 2×2 block of the grid.
 - **Fleet summary**: how many machines are up, the fleet's combined CPU and memory, and its total traffic.
-- **Event log**: machines going offline or coming back, and loads that stay over a threshold for a few seconds.
+- **Event log**, two cells tall, under the camera's right half: machines going offline or coming back, and loads that stay over a threshold for a few seconds.
+
+Machines the hub has that aren't in the fleet list, like the retired `nas-old`, are left out.
 
 Hold the header for a menu that opens the tablet's other apps (camview, Reolink, Firefox, the stock launcher, Settings). visor is the home screen, so that menu is the way out.
 
