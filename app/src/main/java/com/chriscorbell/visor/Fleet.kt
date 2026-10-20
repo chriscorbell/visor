@@ -261,7 +261,7 @@ class Fleet {
             "cloud" to "OCI // CHICAGO",
             "haos" to "HOME ASSISTANT",
             "rpi5" to "PXE BOOT",
-            "agent-pc" to "MILO // AGENT",
+            "agent-pc" to "CODING AGENTS",
             "mbp" to "WORKSTATION",
             "gaming-pc" to "GAMING RIG",
         )
