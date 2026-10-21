@@ -61,6 +61,7 @@ class Beszel(
 
     private fun run() {
         var failures = 0
+        var reconnecting = false
         while (running) {
             val creds = credentials()
             if (creds == null) {
@@ -68,13 +69,18 @@ class Beszel(
                 if (!pause(5_000)) return
                 continue
             }
-            listener.onLink(Link.CONNECTING)
+            if (!reconnecting) listener.onLink(Link.CONNECTING)
+            reconnecting = false
+            var liveAt = 0L
             try {
                 val token = signIn(creds)
                 val systems = listSystems(token)
                 listener.onSystems(systems)
                 val anyUp = systems.any { it.status == "up" }
-                follow(token, systems.map { it.id }.toMutableSet(), anyUp) { failures = 0 }
+                follow(token, systems.map { it.id }.toMutableSet(), anyUp) {
+                    failures = 0
+                    liveAt = System.currentTimeMillis()
+                }
             } catch (e: IOException) {
                 if (running) Log.i(TAG, "Hub link dropped: ${e.message}")
             } catch (e: RuntimeException) {
@@ -84,6 +90,14 @@ class Beszel(
                 stream = null
             }
             if (!running) return
+            // The hub ends every realtime stream after 30 minutes, and visor
+            // ends its own to renew the sign-in. After a stream that ran a
+            // while, reconnect at once with the link still shown live; it
+            // shows down only if that fails.
+            if (liveAt > 0 && System.currentTimeMillis() - liveAt > STEADY_MS) {
+                reconnecting = true
+                continue
+            }
             listener.onLink(Link.OFFLINE)
             if (!pause(RETRY_MS[minOf(failures++, RETRY_MS.lastIndex)])) return
         }
@@ -225,6 +239,7 @@ class Beszel(
         const val SYSTEMS_TOPIC = "systems/*"
         const val RENEW_MS = 6 * 60 * 60_000L
         const val QUIET_MS = 20_000L
+        const val STEADY_MS = 60_000L
         val RETRY_MS = longArrayOf(1_000, 2_000, 5_000, 10_000, 30_000)
 
         /**
