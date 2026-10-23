@@ -251,7 +251,7 @@ class Fleet {
          * these, so a machine the hub keeps for its history, like nas-old,
          * stays off the screen and out of the counts.
          */
-        val ORDER = listOf("minicore", "llm", "nas", "cloud", "haos", "rpi5", "agent-pc", "mbp", "gaming-pc")
+        val ORDER = listOf("minicore", "llm", "nas", "cloud", "haos", "rpi5", "mbp", "gaming-pc")
 
         /** What each machine is for, under its name. */
         val ROLES = mapOf(
@@ -261,7 +261,6 @@ class Fleet {
             "cloud" to "OCI // CHICAGO",
             "haos" to "HOME ASSISTANT",
             "rpi5" to "PXE BOOT",
-            "agent-pc" to "CODING AGENTS",
             "mbp" to "WORKSTATION",
             "gaming-pc" to "GAMING RIG",
         )

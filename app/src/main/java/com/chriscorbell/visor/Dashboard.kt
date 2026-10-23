@@ -13,7 +13,7 @@ import java.util.Locale
 /**
  * The screen: a header over a 4×4 grid. The Camera takes the top-right 2×2
  * block, and the event log the two cells under its right half. Machines fill
- * the other cells in order, and the fleet summary takes the last one.
+ * the other cells in order, and the fleet summary takes the last two.
  */
 class Dashboard(context: Context, private val theme: Theme, val surface: SurfaceView) : ViewGroup(context) {
     val header = Header(context, theme)
@@ -58,7 +58,7 @@ class Dashboard(context: Context, private val theme: Theme, val surface: Surface
 
         val slots = SLOTS.map { (col, row) -> cell(col, row) }
         machines.forEachIndexed { i, tile -> place(tile, slots[i]) }
-        place(fleetTile, slots[MACHINE_SLOTS])
+        place(fleetTile, span(cell(1, 3), cell(2, 3)))
         place(logTile, span(cell(3, 2), cell(3, 3)))
 
         val cam = span(cell(2, 0), cell(3, 1))
@@ -87,10 +87,10 @@ class Dashboard(context: Context, private val theme: Theme, val surface: Surface
     }
 
     companion object {
-        const val MACHINE_SLOTS = 9
+        const val MACHINE_SLOTS = 8
 
-        /** Grid cells (column, row) outside the Camera and the event log, in reading order. */
-        val SLOTS = listOf(0 to 0, 1 to 0, 0 to 1, 1 to 1, 0 to 2, 1 to 2, 2 to 2, 0 to 3, 1 to 3, 2 to 3)
+        /** Machine cells (column, row), in reading order: outside the Camera, the event log and the fleet summary. */
+        val SLOTS = listOf(0 to 0, 1 to 0, 0 to 1, 1 to 1, 0 to 2, 1 to 2, 2 to 2, 0 to 3)
     }
 }
 
