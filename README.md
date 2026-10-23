@@ -1,31 +1,51 @@
 # visor
 
-A fleet dashboard for the always-on Android tablet on Chris's desk: the health and load of every machine in the fleet, with the front-door camera in the top-right corner. It's a native Android app, landscape only, styled like a terminal HUD.
+A fleet dashboard for an always-on Android tablet: the health and load of every machine in a [Beszel](https://beszel.dev) hub, with a live camera feed in the top-right corner. It's a native Android app, landscape only, styled like a terminal HUD.
+
+## ⚠️ This is a personal project ⚠️
+
+visor is built for one tablet, one hub and one camera. The machine names, addresses, camera stream and update source are written into the code. It won't work for anyone else as-is, and there are no plans to make it configurable.
+
+If you want something like it, fork it and change it to fit your own setup. See [Making it yours](#making-it-yours).
 
 ## What it shows
 
-- **One tile per machine** in its fleet list (`Fleet.ORDER`), each in a fixed slot: status and uptime, CPU, memory and disk, plus the GPU (or the biggest ZFS pool, or the temperature), a minute of CPU history, network rates, temperature and load.
+- **One tile per machine**, each in a fixed slot: status and uptime, CPU, memory and disk, plus the GPU (or the biggest ZFS pool, or the temperature), a minute of CPU history, network rates, temperature and load.
 - **The camera**, in the top-right 2×2 block of the grid.
 - **Fleet summary**: how many machines are up, the fleet's combined CPU and memory, and its total traffic.
 - **Event log**, two cells tall, under the camera's right half: machines going offline or coming back, and loads that stay over a threshold for a few seconds.
 
-Machines the hub has that aren't in the fleet list, like the retired `nas-old`, are left out.
+Machines that are registered with the hub but aren't in the fleet list are left out.
 
-Hold the header for a menu that opens the tablet's other apps (camview, Reolink, Firefox, the stock launcher, Settings). visor is the home screen, so that menu is the way out.
+Hold the header for a menu that opens the tablet's other apps. visor is meant to be the home screen, so that menu is the way out.
 
-## Where the data comes from
+## How it works
 
-- **Machine stats**: the [Beszel](https://beszel.dev) hub on minicore, at `http://10.0.0.20:8090` on the LAN, since the tablet isn't on the tailnet. visor signs in with a read-only account and subscribes to each machine's `rt_metrics` topic, which makes the hub poll that machine's agent every second for as long as visor watches. The hub and its agents are set up in the [fleet repo](https://github.com/chriscorbell/fleet) (`hosts/minicore/stacks/beszel/`, `docs/beszel.md`).
-- **Camera**: camview's Relay on minicore, which already makes a 1080p H.264 stream for the desk display (`/api/stream.mp4?src=desk`). The player, `FeedPlayer` and `Fmp4Reader`, is copied from [camview](https://github.com/chriscorbell/camview)'s Android app, minus the sound.
+- **Machine stats** come from a Beszel hub. visor signs in with a read-only account and subscribes to each machine's `rt_metrics` topic, which makes the hub poll that machine's agent every second for as long as visor watches.
+- **The camera** is an H.264 stream in fragmented MP4 over HTTP, the kind [camview](https://github.com/chriscorbell/camview)'s relay serves. The player, `FeedPlayer` and `Fmp4Reader`, is copied from camview's Android app, minus the sound.
+- **Every panel** is a custom `View` drawing on a `Canvas`, and each redraws only itself, about once a second. There's no AndroidX, Compose or WebView, so it stays light on a modest tablet that runs all day.
+- **Updates**: release builds check the repo's GitHub Releases every 15 minutes and install anything newer by themselves.
 
-## Setting up the tablet
+## Making it yours
 
-The tablet runs a LineageOS GSI with Magisk root. Over ADB (`adb connect 10.0.0.199:5555`):
+In a fork, change these:
 
-1. Install the latest release APK from this repo's releases. After that, visor updates itself.
-2. Give visor the hub account. The credentials stay on the tablet and never go into the app or this repo. Write `shared_prefs/visor.xml` in visor's data directory as root, with `email` and `password` strings. The values are `BESZEL_VISOR_EMAIL` and `BESZEL_VISOR_PASSWORD` in minicore's `~/docker/stacks/beszel/.env`.
-3. Make visor the home screen: `cmd package set-home-activity com.chriscorbell.visor/.MainActivity`.
-4. Let it be landscape. Android 16 ignores apps' orientation requests on tablets unless the display allows them, and that resets on every boot, so a Magisk boot script, `/data/adb/service.d/landscape-apps.sh`, runs `wm set-ignore-orientation-request false` once the tablet has booted. The app also opts out with `PROPERTY_COMPAT_ALLOW_RESTRICTED_RESIZABILITY`, and keeps asking for landscape until it gets it.
+- **Addresses**, in `app/build.gradle.kts`: `HUB_URL` (your Beszel hub), `FEED_URL` (your camera stream) and `RELEASES_URL` (your fork's releases).
+- **App ID**, also in `app/build.gradle.kts`, so your build doesn't clash with this one.
+- **Machines**: `Fleet.ORDER` in `Fleet.kt`. Names must match the hub's, and the order sets the grid slots.
+- **The app menu**: the package list in `Dashboard.kt`.
+- **Release signing**: generate your own key, put it in your fork's Actions secrets and replace `release-certificate.sha256` with its certificate's SHA-256.
+
+The grid has a fixed number of machine slots (`MACHINE_SLOTS`) and is sized for one landscape tablet. A different machine count or screen will need changes in `Dashboard.kt` and `Panels.kt`.
+
+## Setting up a tablet
+
+1. Install a release APK. After that, visor updates itself.
+2. Give visor the hub account. Credentials never go into the app or the repo. Write `shared_prefs/visor.xml` in visor's data directory as root, with `email` and `password` strings.
+3. Make visor the home screen: `cmd package set-home-activity <app id>/.MainActivity`.
+4. Let it be landscape. Android 16 ignores apps' orientation requests on tablets unless the display allows them, and that resets on every boot. Run `wm set-ignore-orientation-request false` after each boot, for example from a Magisk boot script in `/data/adb/service.d/`. The app also opts out with `PROPERTY_COMPAT_ALLOW_RESTRICTED_RESIZABILITY`, and keeps asking for landscape until it gets it.
+
+Steps 2 and 4 need root.
 
 ## Building
 
@@ -34,14 +54,12 @@ The tablet runs a LineageOS GSI with Magisk root. Over ADB (`adb connect 10.0.0.
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Debug builds install as `com.chriscorbell.visor.debug`, beside the release app, with their own settings, so step 2 above applies to them too.
+Debug builds install beside the release app with a `.debug` suffix and their own settings, so step 2 above applies to them too. They never update themselves.
 
 ## Releases
 
-Every push to `main` builds a signed APK in GitHub Actions and publishes it as release `visor-<run number>`. The tablet checks every 15 minutes and installs anything newer by itself. Only the first update after a manual install asks for a tap. The workflow refuses to publish an APK whose signing certificate doesn't match `release-certificate.sha256`.
-
-The release key is in the repo's Actions secrets (`VISOR_ANDROID_KEYSTORE_BASE64`, `VISOR_ANDROID_KEYSTORE_PASSWORD`, `VISOR_ANDROID_KEY_ALIAS`, `VISOR_ANDROID_KEY_PASSWORD`). A copy is kept on mbp in `~/Backups/visor/`. Without it, visor can't be updated in place: it would have to be uninstalled and installed again.
+Every push to `main` builds a signed APK in GitHub Actions and publishes it as release `visor-<run number>`. The workflow refuses to publish an APK whose signing certificate doesn't match `release-certificate.sha256`. The key lives in the repo's Actions secrets (`VISOR_ANDROID_KEYSTORE_BASE64`, `VISOR_ANDROID_KEYSTORE_PASSWORD`, `VISOR_ANDROID_KEY_ALIAS`, `VISOR_ANDROID_KEY_PASSWORD`). Keep a backup of it: without it, the app can't be updated in place and has to be reinstalled.
 
 ## License
 
-GPL-3.0, like camview, which the player comes from. JetBrains Mono is under the SIL Open Font License, in `licenses/`.
+GPL-3.0. JetBrains Mono is under the SIL Open Font License, in `licenses/`.
