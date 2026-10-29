@@ -43,14 +43,14 @@ export function App() {
       </div>
       <div className={`side${hello?.camera ? '' : ' no-camera'}`}>
         <StatusStrip
-          order={shown.length}
+          order={0}
           slots={slots}
           fleet={snapshot?.fleet ?? NO_FLEET}
           link={snapshot?.link ?? null}
           server={server}
         />
-        {hello?.camera && <CameraTile name={hello.camera} order={shown.length + 1} />}
-        <EventLog events={snapshot?.events ?? []} order={shown.length + 2} />
+        {hello?.camera && <CameraTile name={hello.camera} order={1} />}
+        <EventLog events={snapshot?.events ?? []} order={2} />
       </div>
     </main>
   );

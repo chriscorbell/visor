@@ -43,7 +43,8 @@ export function StatusStrip(props: {
   const now = useMinute();
   const up = props.slots.filter((s) => s.machine?.status === 'up').length;
   const down = props.slots.some((s) => s.machine?.status === 'down');
-  const short = props.slots.some((s) => !s.machine?.live);
+  // A paused machine was paused on purpose, so it doesn't count against the fleet.
+  const short = props.slots.some((s) => s.machine?.status !== 'paused' && !s.machine?.live);
   const problem = linkProblem(props.server, props.link);
   const { fleet } = props;
 

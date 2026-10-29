@@ -10,7 +10,7 @@
   --line: #2b2a27;
   --text-1: #edebe6;
   --text-2: #a7a59f;
-  --text-3: #6f6d68;
+  --text-3: #85837d;
   --ok: #5fbf8a;
   --warn: #f2a541;
   --crit: #f2545b;
@@ -303,6 +303,8 @@ svg.lucide {
 
 .machine-foot .temp {
   margin-left: auto;
+  color: var(--level, inherit);
+  transition: color 400ms ease;
 }
 
 .placeholder {
@@ -329,8 +331,18 @@ svg.lucide {
 
 @container (width < 16rem) {
   .history,
-  .uptime {
+  .uptime,
+  .machine-foot .temp svg {
     display: none;
+  }
+
+  .machine-foot {
+    gap: 0.6rem;
+  }
+
+  .meter {
+    grid-template-columns: 3.4rem minmax(0, 1fr) 3.8rem;
+    gap: 0.6rem;
   }
 }
 
@@ -540,12 +552,7 @@ svg.lucide {
   height: 2.6rem;
   font-size: 1.4rem;
   white-space: nowrap;
-  transition: opacity 400ms ease;
   animation: drop-in 400ms var(--ease) backwards;
-}
-
-.events li:nth-child(n + 7) {
-  opacity: 0.55;
 }
 
 .events time {
@@ -566,9 +573,6 @@ svg.lucide {
   color: var(--text-2);
 }
 
-.events .good .text {
-  color: var(--ok);
-}
 .events .warn .text {
   color: var(--warn);
 }

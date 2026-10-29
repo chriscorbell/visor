@@ -112,7 +112,7 @@ export function MachineTile({ slot, order }: { slot: Slot; order: number }) {
               {rate(m.netDownBps)}
             </span>
             {temp !== null && (
-              <span className="temp">
+              <span className={`temp ${level(temp, 75, 85)}`}>
                 <Thermometer />
                 {Math.round(temp)}°
               </span>
