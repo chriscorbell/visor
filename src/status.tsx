@@ -61,9 +61,11 @@ export function StatusStrip(props: {
           </span>
         )}
         {problem ? (
-          <span className={`fleet-detail ${problem[1]}`}>{problem[0]}</span>
+          <span key="problem" className={`fleet-detail ${problem[1]}`}>
+            {problem[0]}
+          </span>
         ) : (
-          <span className="fleet-detail">
+          <span key="summary" className="fleet-detail">
             <span>
               <ArrowUp />
               {rate(fleet.netUpBps)}
