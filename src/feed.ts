@@ -10,14 +10,16 @@ const STALL_MS = 2500;
 const FIRST_FRAME_MS = 6000;
 const RETRY_MS = [500, 1000, 2000, 5000];
 const TICK_MS = 250;
-// Frames arrive in bursts after every keyframe stall, so playback trails the
-// newest frame by just enough to cover the worst stall in each window. A
-// stall that runs the buffer dry pauses playback, which grows the buffer by
-// the stall's length; spare buffer is played off a little faster.
+// Frames arrive in bursts after every keyframe stall. Playback keeps at least
+// BUFFER_S of them in hand at the leanest moment of each window, easing a
+// little faster or slower to hold it. Closer to the newest frame, Firefox for
+// Android keeps finding its decoded frames late, drops them and flushes the
+// decoder, and some decoders then show pictures from a second or two before.
 const WINDOW_MS = 4000;
-const MARGIN_S = 0.05;
+const BUFFER_S = 0.5;
 const MAX_SPEEDUP = 0.08;
-// Further behind than this, as after a hiccup in the decoder, jump to the newest frame.
+const MAX_SLOWDOWN = 0.05;
+// Further behind than this, as after a hiccup in the decoder, jump ahead to the newest frames.
 const JUMP_S = 3;
 // Seconds of played video kept in the buffer.
 const KEEP_S = 4;
@@ -94,9 +96,11 @@ export class Feed {
         // How much was left to play when new frames came: the slack the buffer had.
         if (started) this.#windowMinLag = Math.min(this.#windowMinLag, this.#lag());
         await append(buffer, value, abort.signal);
-        if (!started && video.buffered.length > 0) {
+        // The stream starts on a keyframe; playing from there, once there's a
+        // buffer in hand, needs no seek.
+        if (!started && video.buffered.length > 0 && video.buffered.end(0) - video.buffered.start(0) >= BUFFER_S) {
           started = true;
-          video.currentTime = Math.max(video.buffered.start(0), video.buffered.end(0) - MARGIN_S);
+          video.currentTime = video.buffered.start(0);
           video.play().catch(() => {});
         }
         const now = performance.now();
@@ -140,7 +144,7 @@ export class Feed {
     // A hole in the stream leaves a gap playback won't cross by itself.
     const atGap = b.length > 1 && video.currentTime >= b.end(0) - 0.1;
     if (atGap || end - video.currentTime > JUMP_S) {
-      video.currentTime = end - MARGIN_S;
+      video.currentTime = Math.max(b.start(b.length - 1), end - BUFFER_S);
       this.#windowStart = 0;
       return;
     }
@@ -148,8 +152,10 @@ export class Feed {
       this.#windowStart = now;
       this.#windowMinLag = Infinity;
     } else if (now - this.#windowStart >= WINDOW_MS) {
-      const spare = this.#windowMinLag - MARGIN_S;
-      const rate = spare > 0 && Number.isFinite(spare) ? 1 + Math.min(MAX_SPEEDUP, spare / (WINDOW_MS / 1000)) : 1;
+      const spare = this.#windowMinLag - BUFFER_S;
+      const rate = Number.isFinite(spare)
+        ? 1 + Math.max(-MAX_SLOWDOWN, Math.min(MAX_SPEEDUP, spare / (WINDOW_MS / 1000)))
+        : 1;
       if (Math.abs(video.playbackRate - rate) > 0.001) video.playbackRate = rate;
       this.#windowStart = now;
       this.#windowMinLag = Infinity;
