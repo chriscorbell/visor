@@ -1,0 +1,612 @@
+/* A terminal HUD. Sizes are in rem, and 1rem is 10 px on a 1280×800 screen:
+   the root font size follows the viewport, so the grid fills any screen. */
+
+@property --accent {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #00e5ff;
+}
+
+:root {
+  --bg: #03060a;
+  --panel: #060c12;
+  --cyan: #00e5ff;
+  --text: #cdecf2;
+  --muted: #547a86;
+  --green: #39ff9a;
+  --amber: #ffb020;
+  --magenta: #ff2e88;
+  --edge: rgb(0 229 255 / 0.19);
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  font-size: min(0.78125vw, 1.25vh);
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+body {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  color: var(--text);
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  text-size-adjust: none;
+  -webkit-text-size-adjust: none;
+  -moz-text-size-adjust: none;
+}
+
+.screen {
+  display: grid;
+  grid-template-rows: 4rem minmax(0, 1fr);
+  gap: 0.8rem;
+  height: 100%;
+  padding: 0.6rem 1.2rem 1.2rem;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-rows: repeat(4, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.glyph {
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.15em;
+  stroke-width: 2.5;
+}
+
+.dot {
+  display: inline-block;
+  width: 0.6rem;
+  height: 0.6rem;
+  margin-right: 0.6rem;
+  border-radius: 50%;
+  background: var(--dot);
+  box-shadow: 0 0 0.5rem var(--dot);
+  vertical-align: 0.05rem;
+  transition: background-color 400ms var(--ease), box-shadow 400ms var(--ease);
+}
+
+/* ---- header ------------------------------------------------------------------ */
+
+.header {
+  display: flex;
+  align-items: baseline;
+  gap: 2.2rem;
+  padding-top: 1rem;
+  font-weight: 700;
+  /* A ruler along the bottom edge. */
+  background:
+    linear-gradient(rgb(0 229 255 / 0.24) 0 0) left bottom / 100% 1px no-repeat,
+    repeating-linear-gradient(to right, rgb(0 229 255 / 0.43) 0 1px, transparent 1px 8rem) left bottom / 100% 0.6rem
+      no-repeat,
+    repeating-linear-gradient(to right, rgb(0 229 255 / 0.43) 0 1px, transparent 1px 0.8rem) left bottom / 100% 0.3rem
+      no-repeat;
+}
+
+.logo {
+  font-size: 1.8rem;
+  letter-spacing: 0.25em;
+  color: var(--cyan);
+  text-shadow: 0 0 0.8rem rgb(0 229 255 / 0.55);
+}
+
+.sub,
+.info {
+  font-size: 1rem;
+  letter-spacing: 0.15em;
+  color: var(--muted);
+}
+
+.sub {
+  margin-left: -1rem;
+  margin-right: auto;
+}
+
+.clock {
+  font-size: 1.8rem;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 0.6rem rgb(0 229 255 / 0.55);
+}
+
+/* ---- panels ------------------------------------------------------------------ */
+
+.panel {
+  --cut: 1.4rem;
+  --shape: polygon(0 0, calc(100% - var(--cut)) 0, 100% var(--cut), 100% 100%, 0 100%);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  padding: 1.2rem;
+  clip-path: var(--shape);
+  background: var(--edge);
+  transition: --accent 400ms var(--ease);
+  animation: panel-in 600ms var(--ease) both;
+  animation-delay: calc(var(--i, 0) * 50ms);
+}
+
+/* The plate, with faint scanlines. */
+.panel::before {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  clip-path: var(--shape);
+  background:
+    repeating-linear-gradient(to bottom, rgb(0 229 255 / 0.04) 0 1px, transparent 1px 0.3rem),
+    var(--panel);
+}
+
+/* Brackets on the top-left and bottom-right corners, and along the cut. */
+.panel::after {
+  --arm: 1.2rem;
+  --t: 0.15rem;
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--accent) 0 0) left top / var(--arm) var(--t) no-repeat,
+    linear-gradient(var(--accent) 0 0) left top / var(--t) var(--arm) no-repeat,
+    linear-gradient(var(--accent) 0 0) right bottom / var(--arm) var(--t) no-repeat,
+    linear-gradient(var(--accent) 0 0) right bottom / var(--t) var(--arm) no-repeat,
+    linear-gradient(to top right, transparent calc(50% - 0.17rem), var(--accent) 0 50%, transparent 0) right top /
+      var(--cut) var(--cut) no-repeat;
+}
+
+.panel > * {
+  position: relative;
+  z-index: 1;
+}
+
+.accent-cyan {
+  --accent: var(--cyan);
+}
+.accent-magenta {
+  --accent: var(--magenta);
+}
+.accent-muted {
+  --accent: var(--muted);
+}
+.accent-faint {
+  --accent: rgb(84 122 134 / 0.47);
+}
+
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.8rem);
+  }
+}
+
+.title {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+
+.tile-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-right: 0.8rem;
+  white-space: nowrap;
+}
+
+.name {
+  font-size: 1.5rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  transition: color 400ms var(--ease);
+}
+
+.state {
+  font-size: 1rem;
+  color: var(--muted);
+}
+
+.role {
+  margin-top: 0.3rem;
+  overflow: hidden;
+  font-size: 0.95rem;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.role.alert {
+  color: var(--magenta);
+}
+
+.foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 1rem;
+  color: var(--muted);
+  white-space: pre;
+}
+
+.net .glyph {
+  margin-right: 0.1rem;
+}
+
+/* ---- bars -------------------------------------------------------------------- */
+
+.bars {
+  display: grid;
+  gap: 0.7rem;
+  margin-top: 1.1rem;
+}
+
+.bar-row {
+  display: grid;
+  grid-template-columns: 3.4rem minmax(0, 1fr) 4.6rem;
+  align-items: center;
+  height: 1.4rem;
+  color: var(--level);
+  transition: color 400ms var(--ease);
+}
+
+.level-cyan {
+  --level: var(--cyan);
+}
+.level-amber {
+  --level: var(--amber);
+}
+.level-magenta {
+  --level: var(--magenta);
+}
+
+.bar-label {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.bar-value {
+  font-size: 1.2rem;
+  text-align: right;
+}
+
+/* 24 segments; the lit ones are a copy of the track, uncovered left to right. */
+.bar {
+  --gap: 0.2rem;
+  position: relative;
+  height: 0.7rem;
+}
+
+.bar::before,
+.bar-fill {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to right, currentColor calc(100% - var(--gap)), transparent 0) left top /
+    calc((100% + var(--gap)) / 24) 100% repeat-x;
+}
+
+.bar::before {
+  opacity: 0.12;
+}
+
+.bar-fill {
+  opacity: 0.9;
+  clip-path: inset(0 calc(100% - var(--pct)) 0 0);
+  transition: clip-path 500ms var(--ease);
+}
+
+/* ---- history ----------------------------------------------------------------- */
+
+.history {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  margin: 0.6rem 0 0.6rem;
+  color: var(--cyan);
+  border-bottom: 1px dashed rgb(0 229 255 / 0.12);
+  background: linear-gradient(to right, rgb(0 229 255 / 0.1) 50%, transparent 0) left center / 0.6rem 1px repeat-x;
+}
+
+.history-label {
+  position: absolute;
+  top: -0.1rem;
+  left: 0;
+  font-size: 0.8rem;
+  color: rgb(84 122 134 / 0.8);
+}
+
+.sparkline {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+/* ---- machines ---------------------------------------------------------------- */
+
+.machine.lost .name,
+.machine.empty .name {
+  color: var(--muted);
+}
+
+.machine.empty .name {
+  opacity: 0.7;
+}
+
+.awaiting {
+  margin: auto;
+  font-size: 0.95rem;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.signal-lost {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  margin: auto;
+  font-size: 0.95rem;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  animation: fade-in 400ms var(--ease) both;
+}
+
+.signal-lost strong {
+  position: relative;
+  font-size: 1.6rem;
+  letter-spacing: 0.2em;
+  color: var(--magenta);
+}
+
+/* A cyan echo just off the text. */
+.signal-lost strong::before {
+  content: attr(data-text);
+  position: absolute;
+  left: 0.15rem;
+  top: 0.1rem;
+  z-index: -1;
+  color: rgb(0 229 255 / 0.47);
+}
+
+.signal-lost.down strong {
+  animation: blink 1s steps(1) infinite;
+}
+
+.signal-lost.paused strong {
+  color: var(--muted);
+}
+
+/* ---- fleet ------------------------------------------------------------------- */
+
+.count {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  margin-top: 0.6rem;
+  font-size: 0.95rem;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.count strong {
+  font-size: 3rem;
+  letter-spacing: 0;
+  color: var(--text);
+  text-shadow: 0 0 0.8rem rgb(0 229 255 / 0.55);
+  transition: color 400ms var(--ease);
+}
+
+.count strong.short {
+  color: var(--amber);
+}
+
+.fleet .bars {
+  margin-top: 0.4rem;
+}
+
+/* ---- event log --------------------------------------------------------------- */
+
+.events {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: flex-end;
+  min-height: 0;
+  margin: 1rem 0 0;
+  padding: 0;
+  overflow: hidden;
+  list-style: none;
+  font-size: 1rem;
+  line-height: 1.4rem;
+}
+
+.events li {
+  display: grid;
+  flex: none;
+  grid-template-columns: 7rem 7rem minmax(0, 1fr);
+  white-space: nowrap;
+  animation: line-in 350ms var(--ease) both;
+}
+
+.events time {
+  color: rgb(84 122 134 / 0.8);
+}
+
+.events .text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tone-info .text {
+  color: var(--cyan);
+}
+.tone-good .text {
+  color: var(--green);
+}
+.tone-warn .text {
+  color: var(--amber);
+}
+.tone-alert .text {
+  color: var(--magenta);
+}
+
+.events .prompt {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--cyan);
+  animation: none;
+}
+
+.cursor {
+  width: 0.6rem;
+  height: 1.1rem;
+  background: var(--cyan);
+  animation: blink 1s steps(1) infinite;
+}
+
+@keyframes line-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.6rem);
+  }
+}
+
+/* ---- camera ------------------------------------------------------------------ */
+
+.camera {
+  padding: 1.2rem 0.6rem 0.6rem;
+}
+
+.camera .tile-head {
+  padding: 0 1.6rem 0 0.6rem;
+}
+
+.camera .state {
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--text);
+}
+
+.feed-connecting .state {
+  color: var(--amber);
+}
+
+.feed-reconnecting .state {
+  color: var(--magenta);
+}
+
+.feed-live .dot {
+  animation: blink 1s steps(1) infinite;
+}
+
+.picture-area {
+  flex: 1;
+  min-height: 0;
+  margin-top: 0.8rem;
+  container-type: size;
+}
+
+/* The largest 16:9 picture that fits. */
+.picture {
+  position: relative;
+  width: min(100cqw, 100cqh * 16 / 9);
+  aspect-ratio: 16 / 9;
+  margin: 0 auto;
+  background: #000;
+}
+
+.picture video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.picture::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgb(3 6 10 / 0.6);
+  opacity: 0;
+  transition: opacity 400ms var(--ease);
+}
+
+.camera:not(.feed-live) .picture::after {
+  opacity: 1;
+}
+
+.corner {
+  --arm: 1.6rem;
+  position: absolute;
+  z-index: 1;
+  width: var(--arm);
+  height: var(--arm);
+  border: 0 solid var(--cyan);
+}
+
+.corner.tl {
+  top: 0;
+  left: 0;
+  border-width: 0.15rem 0 0 0.15rem;
+}
+.corner.tr {
+  top: 0;
+  right: 0;
+  border-width: 0.15rem 0.15rem 0 0;
+}
+.corner.bl {
+  bottom: 0;
+  left: 0;
+  border-width: 0 0 0.15rem 0.15rem;
+}
+.corner.br {
+  right: 0;
+  bottom: 0;
+  border-width: 0 0.15rem 0.15rem 0;
+}
+
+/* ---- motion ------------------------------------------------------------------ */
+
+@keyframes blink {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+  }
+}

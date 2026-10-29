@@ -1,0 +1,62 @@
+# visor
+
+A fleet dashboard for an always-on screen: the health and load of every machine in a [Beszel](https://beszel.dev) hub, with a live camera feed in the top-right corner. It's a web app styled like a terminal HUD, laid out for a landscape tablet that shows it all day.
+
+## ⚠️ This is a personal project ⚠️
+
+visor is built for one screen, one hub and one camera, and the layout assumes it: a 4×4 grid with eight machine slots. Everything that names a machine or an address comes from environment variables, so it can run elsewhere, but there are no plans to make it more configurable than that. Fork it and change it to fit your setup.
+
+## What it shows
+
+- **One tile per machine**, each in a fixed slot: status and uptime, CPU, memory and disk, plus the GPU (or the biggest ZFS pool, or the temperature), a minute of CPU history, network rates, temperature and load.
+- **The camera**, in the top-right 2×2 block of the grid.
+- **Fleet summary**: how many machines are up, the fleet's combined CPU and memory, and its total traffic.
+- **Event log**, two cells tall, under the camera's right half: machines going offline or coming back, ZFS pools that aren't healthy, and loads that stay over a threshold for a few seconds.
+
+Machines that are registered with the hub but aren't in the machine list are left out.
+
+## How it works
+
+- **The server** is a small Node app with no dependencies. It signs in to the hub with a read-only account and keeps one realtime connection to it. While at least one page is open, and for a minute after, it subscribes to each machine's `rt_metrics` topic, which makes the hub poll that machine's agent every second. It keeps the minute of history and the event log, and sends every open page one snapshot a second over server-sent events. Pages never see the hub account.
+- **The camera** is an H.264 stream in fragmented MP4 over HTTP, the kind go2rtc's `stream.mp4` serves. The server passes it through, and the page plays it with Media Source Extensions, so the browser's hardware decoder does the work. Playback trails the newest frame by just enough to ride out the camera's keyframe stalls, about 0.2 s.
+- **The page** is React, and it redraws once a second, when the snapshot arrives. Motion is CSS transitions on the bars and a few blinking lights, with no blur and nothing animating every frame, so it stays light on a modest tablet.
+- **Updates**: when the server restarts with a new build, open pages reload into it on their own.
+
+## Configuration
+
+| Variable | Example | What it is |
+| --- | --- | --- |
+| `HUB_URL` | `http://192.168.1.20:8090` | The Beszel hub. Required. |
+| `HUB_EMAIL`, `HUB_PASSWORD` | | A read-only account on the hub. Keep these in a `.env`, never in the repo. |
+| `MACHINES` | `server:Docker host,nas:Storage` | Machines in grid order, each as `name:role`. Names must match the hub's. The first eight get a tile. |
+| `FEED_URL` | `http://192.168.1.20:1984/api/stream.mp4?src=camera&video` | The camera stream. `&video` asks go2rtc for the picture only. Leave it out for no camera. |
+| `CAMERA_NAME` | `Front door` | The camera tile's label. |
+| `PORT` | `3150` | Where the server listens. |
+
+## Running it
+
+[`compose.yaml`](compose.yaml) is an example deployment. Put `HUB_EMAIL` and `HUB_PASSWORD` in a `.env` beside it, set the rest, then `docker compose up -d` and open `http://<server>:3150`.
+
+Every push to `main` publishes `ghcr.io/chriscorbell/visor:latest` and `:sha-<commit>`.
+
+## On a tablet
+
+Either way works:
+
+- **A kiosk browser set as the home app**, such as Fully Kiosk Browser. It starts on boot, comes back after a crash, stays full screen, and is fine with plain HTTP on the LAN.
+- **Installed as an app.** The manifest asks for full screen and landscape. Browsers only offer to install a site served over HTTPS, though, and an installed app doesn't start on boot.
+
+In an ordinary browser, tap the page once to go full screen. Pages can only hold the screen on over HTTPS, so on plain HTTP set the tablet's screen timeout to never.
+
+## Developing
+
+```sh
+pnpm install
+pnpm server    # the server, reading .env (see Configuration)
+pnpm dev       # the page, with /api sent to the server
+pnpm build     # type-check and build
+```
+
+## License
+
+GPL-3.0. JetBrains Mono is under the SIL Open Font License, in `licenses/`.

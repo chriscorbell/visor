@@ -1,0 +1,19 @@
+# An example. The addresses and names below are placeholders; use your own.
+services:
+  visor:
+    image: ghcr.io/chriscorbell/visor:latest
+    container_name: visor
+    restart: unless-stopped
+    ports:
+      - "3150:3150"
+    environment:
+      # The Beszel hub, and a read-only account on it, kept in a .env beside this file.
+      HUB_URL: http://192.168.1.20:8090
+      HUB_EMAIL: ${HUB_EMAIL}
+      HUB_PASSWORD: ${HUB_PASSWORD}
+      # Machines in grid order, each as name:role. Names must match the hub's.
+      MACHINES: server:Docker host,nas:Storage,desktop:Workstation
+      # An H.264 stream in fragmented MP4 over HTTP, such as go2rtc's stream.mp4
+      # with &video. Leave it out for no camera.
+      FEED_URL: http://192.168.1.20:1984/api/stream.mp4?src=camera&video
+      CAMERA_NAME: Front door

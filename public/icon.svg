@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108">
+  <!-- A visor slit: a cyan bar across a dark, angled plate. -->
+  <rect width="108" height="108" fill="#03060a"/>
+  <path d="M14 14H82L94 26V94H14Z" fill="#03060a" stroke="#00e5ff" stroke-opacity=".2" stroke-width="2"/>
+  <path d="M26 48H82L76 60H32Z" fill="#00e5ff"/>
+  <path d="M70 51H76L74 57H68Z" fill="#ff2e88"/>
+</svg>
