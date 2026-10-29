@@ -1,5 +1,6 @@
 /* A terminal HUD. Sizes are in rem, and 1rem is 10 px on a 1280×800 screen:
-   the root font size follows the viewport, so the grid fills any screen. */
+   the root font size follows the viewport, so the grid fills any screen.
+   dvh, because a mobile browser's vh assumes its toolbar is hidden. */
 
 @property --accent {
   syntax: '<color>';
@@ -18,7 +19,7 @@
   --magenta: #ff2e88;
   --edge: rgb(0 229 255 / 0.19);
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
-  font-size: min(0.78125vw, 1.25vh);
+  font-size: min(0.78125vw, 1.25dvh);
   color-scheme: dark;
 }
 
@@ -31,7 +32,7 @@
 html,
 body,
 #root {
-  height: 100%;
+  height: 100dvh;
   margin: 0;
   overflow: hidden;
   background: var(--bg);
@@ -200,6 +201,7 @@ body {
   font-weight: 700;
   letter-spacing: 0.12em;
   color: var(--muted);
+  text-transform: uppercase;
 }
 
 .tile-head {
@@ -317,9 +319,14 @@ body {
 
 /* ---- history ----------------------------------------------------------------- */
 
+/* Everything else in a tile keeps its height; the history takes what's left. */
+.panel > * {
+  flex: none;
+}
+
 .history {
   position: relative;
-  flex: 1;
+  flex: 1 1 0;
   min-height: 0;
   margin: 0.6rem 0 0.6rem;
   color: var(--cyan);
