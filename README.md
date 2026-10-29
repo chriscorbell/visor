@@ -18,7 +18,7 @@ Machines that are registered with the hub but aren't in the machine list are lef
 ## How it works
 
 - **The server** is a small Node app with no dependencies. It signs in to the hub with a read-only account and keeps one realtime connection to it. While at least one page is open, and for a minute after, it subscribes to each machine's `rt_metrics` topic, which makes the hub poll that machine's agent every second. It keeps the minute of history and the event log, and sends every open page one snapshot a second over server-sent events. Pages never see the hub account.
-- **The camera** is an H.264 stream in fragmented MP4 over HTTP, the kind go2rtc's `stream.mp4` serves. The server passes it through, and the page plays it with Media Source Extensions, so the browser's hardware decoder does the work. Playback trails the newest frame by just enough to ride out the camera's keyframe stalls, about 0.2 s.
+- **The camera** is an H.264 stream in fragmented MP4 over HTTP, the kind go2rtc's `stream.mp4` serves. The server passes it through, and the page plays it with Media Source Extensions, so the browser's hardware decoder does the work. Playback keeps at least half a second of video in hand. Any closer to the newest frame, Firefox for Android drops frames and flushes the decoder, and the picture jumps back and forth.
 - **The page** is React, and it redraws once a second, when the snapshot arrives. Motion is CSS transitions and fades, with no blur and nothing animating every frame, so it stays light on a modest tablet.
 - **Updates**: when the server restarts with a new build, open pages reload into it on their own.
 
