@@ -36,7 +36,6 @@ export interface Machine {
   tempC: number | null;
   netUpBps: number;
   netDownBps: number;
-  load1: number | null;
   /** The last minute of CPU, oldest first. */
   cpuHistory: number[];
 }
@@ -48,16 +47,12 @@ export interface Slot {
   machine: Machine | null;
 }
 
+/** The live machines' combined memory and traffic. */
 export interface FleetSummary {
-  online: number;
-  total: number;
-  /** Average CPU of the live machines. */
-  cpu: number;
   memUsedGb: number;
   memTotalGb: number;
   netUpBps: number;
   netDownBps: number;
-  cpuHistory: number[];
 }
 
 export interface LogEvent {

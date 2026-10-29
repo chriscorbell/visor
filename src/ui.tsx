@@ -1,75 +1,46 @@
-import { useId } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { HISTORY } from '../shared/types.ts';
 import { level } from './format.ts';
 
-export type Accent = 'cyan' | 'magenta' | 'muted' | 'faint';
-
-/**
- * A panel on the grid: a dark plate with its top-right corner cut off, a
- * hairline edge, and bright brackets on two corners.
- */
-export function Panel(props: {
-  area: CSSProperties;
-  accent?: Accent;
-  order: number;
-  className?: string;
-  children: ReactNode;
-}) {
-  const style = { ...props.area, '--i': props.order } as CSSProperties;
+/** A flat panel. `order` staggers its entrance when the page loads. */
+export function Tile(props: { order: number; className?: string; children: ReactNode }) {
   return (
-    <section className={`panel accent-${props.accent ?? 'cyan'} ${props.className ?? ''}`} style={style}>
+    <section className={`tile ${props.className ?? ''}`} style={{ '--i': props.order } as CSSProperties}>
       {props.children}
     </section>
   );
 }
 
-/** A load bar of lit segments, colored by the load's level, with its label and value. */
-export function Bar({ label, pct, unit = '%' }: { label: string; pct: number; unit?: string }) {
-  const shown = Math.min(100, Math.max(0, pct));
+/**
+ * A labelled bar and its value, colored only once the reading passes `warn`.
+ * The fill is a scaled copy of the track, so it moves on the compositor.
+ */
+export function Meter(props: { label: string; value: number; unit?: string; warn: number; crit: number }) {
+  // Whole percents, so a reading that hasn't really moved doesn't restart the transition.
+  const fraction = Math.round(Math.min(100, Math.max(0, props.value))) / 100;
   return (
-    <div className={`bar-row level-${level(pct)}`}>
-      <span className="bar-label">{label}</span>
-      <div className="bar" style={{ '--pct': `${shown}%` } as CSSProperties}>
-        <div className="bar-fill" />
-      </div>
-      <span className="bar-value">
-        {Math.trunc(pct)}
-        {unit}
+    <div className={`meter ${level(props.value, props.warn, props.crit)}`}>
+      <span className="meter-label">{props.label}</span>
+      <span className="meter-track">
+        <i className="meter-fill" style={{ '--f': fraction } as CSSProperties} />
+      </span>
+      <span className="meter-value">
+        {Math.round(props.value)}
+        {props.unit ?? '%'}
       </span>
     </div>
   );
 }
 
-/** The last minute of `values`, scaled 0–`scale`, with a fading fill under it. */
-export function Sparkline({ values, scale = 100 }: { values: number[]; scale?: number }) {
-  // React's ids hold characters a url(#…) reference can't.
-  const gradient = 'spark' + useId().replace(/[^\w-]/g, '');
+/** The last minute of `values`, on a fixed 0–100 scale so machines compare at a glance. */
+export function Sparkline({ values }: { values: number[] }) {
   if (values.length < 2) return <svg className="sparkline" />;
   const start = HISTORY - values.length;
-  const points = values.map((v, i) => `${start + i},${(100 - (Math.min(scale, Math.max(0, v)) / scale) * 100).toFixed(1)}`);
+  const points = values.map((v, i) => `${start + i},${(100 - Math.min(100, Math.max(0, v))).toFixed(1)}`);
   return (
     <svg className="sparkline" viewBox={`0 0 ${HISTORY - 1} 100`} preserveAspectRatio="none">
-      <defs>
-        <linearGradient id={gradient} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="currentColor" stopOpacity="0.28" />
-          <stop offset="1" stopColor="currentColor" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      <path d={`M${start},100L${points.join('L')}L${HISTORY - 1},100Z`} fill={`url(#${gradient})`} />
-      <path
-        d={`M${points.join('L')}`}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.2"
-        strokeLinejoin="round"
-        vectorEffect="non-scaling-stroke"
-      />
+      <path className="sparkline-area" d={`M${start},100L${points.join('L')}L${HISTORY - 1},100Z`} />
+      <path className="sparkline-line" d={`M${points.join('L')}`} vectorEffect="non-scaling-stroke" />
     </svg>
   );
-}
-
-/** A status light. */
-export function Dot({ color }: { color: string }) {
-  return <i className="dot" style={{ '--dot': `var(--${color})` } as CSSProperties} />;
 }

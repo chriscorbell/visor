@@ -17,7 +17,7 @@ const PORT = Number(env.PORT ?? 3150);
 const BUILD = env.BUILD ?? 'dev';
 const HUB_URL = (env.HUB_URL ?? '').replace(/\/$/, '');
 const FEED_URL = env.FEED_URL ?? '';
-const CAMERA_NAME = env.CAMERA_NAME || 'CAMERA';
+const CAMERA_NAME = env.CAMERA_NAME || 'Camera';
 const STATIC_DIR = fileURLToPath(new URL('../dist/', import.meta.url));
 /** After the last page closes, keep the hub polling this long, so a reload doesn't restart it. */
 const LINGER_MS = 60_000;
@@ -52,9 +52,9 @@ const hub = new Hub({
   listener: {
     link(next) {
       if (next === link) return;
-      if (next === 'live') fleet.log('hub', 'LINK ESTABLISHED', 'good');
-      else if (link === 'live') fleet.log('hub', 'LINK LOST', 'alert');
-      else if (next === 'no-credentials') fleet.log('hub', 'NO CREDENTIALS SET', 'alert');
+      if (next === 'live') fleet.log('hub', 'Connected', 'good');
+      else if (link === 'live') fleet.log('hub', 'Connection lost', 'alert');
+      else if (next === 'no-credentials') fleet.log('hub', 'No credentials set', 'alert');
       link = next;
     },
     systems: (systems) => fleet.replace(systems),
@@ -65,13 +65,12 @@ const hub = new Hub({
   },
 });
 
-fleet.log('visor', `BOOT // BUILD ${BUILD.slice(0, 7)}`, 'info');
+fleet.log('visor', `Started, build ${BUILD.slice(0, 7)}`, 'info');
 hub.start();
 
 // ---- pages watching ------------------------------------------------------------
 
 const pages = new Set<ServerResponse>();
-let lastState = '';
 let lingerTimer: NodeJS.Timeout | undefined;
 
 function watchers(): void {
@@ -85,8 +84,8 @@ function watchers(): void {
  * one frame for it instead of one per machine sample.
  */
 function heartbeat(): void {
-  lastState = `event: state\ndata: ${JSON.stringify(fleet.snapshot(link))}\n\n`;
-  for (const page of pages) page.write(lastState);
+  const state = `event: state\ndata: ${JSON.stringify(fleet.snapshot(link))}\n\n`;
+  for (const page of pages) page.write(state);
   setTimeout(heartbeat, 1000 - (Date.now() % 1000));
 }
 heartbeat();
@@ -97,10 +96,14 @@ function streamState(req: IncomingMessage, res: ServerResponse): void {
     'Cache-Control': 'no-store',
     'X-Accel-Buffering': 'no',
   });
-  const hello: Hello = { build: BUILD, camera: FEED_URL ? CAMERA_NAME : null };
-  res.write(`retry: 2000\nevent: hello\ndata: ${JSON.stringify(hello)}\n\n${lastState}`);
   pages.add(res);
+  // Sampling starts here when it was off, so the first snapshot shows machines as live, not stale.
   watchers();
+  const hello: Hello = { build: BUILD, camera: FEED_URL ? CAMERA_NAME : null };
+  res.write(
+    `retry: 2000\nevent: hello\ndata: ${JSON.stringify(hello)}\n\n` +
+      `event: state\ndata: ${JSON.stringify(fleet.snapshot(link))}\n\n`,
+  );
   req.on('close', () => {
     pages.delete(res);
     watchers();
