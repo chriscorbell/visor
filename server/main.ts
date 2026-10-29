@@ -52,9 +52,9 @@ const hub = new Hub({
   listener: {
     link(next) {
       if (next === link) return;
-      if (next === 'live') fleet.log('hub', 'LINK ESTABLISHED', 'good');
-      else if (link === 'live') fleet.log('hub', 'LINK LOST', 'alert');
-      else if (next === 'no-credentials') fleet.log('hub', 'NO CREDENTIALS SET', 'alert');
+      if (next === 'live') fleet.log('hub', 'Connected', 'good');
+      else if (link === 'live') fleet.log('hub', 'Connection lost', 'alert');
+      else if (next === 'no-credentials') fleet.log('hub', 'No credentials set', 'alert');
       link = next;
     },
     systems: (systems) => fleet.replace(systems),
@@ -65,7 +65,7 @@ const hub = new Hub({
   },
 });
 
-fleet.log('visor', `BOOT // BUILD ${BUILD.slice(0, 7)}`, 'info');
+fleet.log('visor', `Started, build ${BUILD.slice(0, 7)}`, 'info');
 hub.start();
 
 // ---- pages watching ------------------------------------------------------------

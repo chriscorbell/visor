@@ -1,19 +1,24 @@
+import { VideoOff } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import type { CSSProperties } from 'react';
 import { Feed } from './feed.ts';
 import type { FeedState } from './feed.ts';
-import { Dot, Panel } from './ui.tsx';
+import { Tile } from './ui.tsx';
 
-const LABELS: Record<FeedState, [string, string]> = {
-  live: ['LIVE', 'magenta'],
-  connecting: ['LINKING', 'amber'],
-  reconnecting: ['SIGNAL LOST', 'magenta'],
+const LABELS: Record<FeedState, string> = {
+  live: 'Live',
+  connecting: 'Connecting',
+  reconnecting: 'Reconnecting',
 };
 
-/** The Camera's picture, with HUD brackets on its corners. It stops while the page is hidden. */
-export function CameraTile({ name, area, order }: { name: string; area: CSSProperties; order: number }) {
+/**
+ * The camera's picture, with its name and state under it. Nothing covers the
+ * picture while it's live. It stops while the page is hidden.
+ */
+export function CameraTile({ name, order }: { name: string; order: number }) {
   const video = useRef<HTMLVideoElement>(null);
   const [state, setState] = useState<FeedState>('connecting');
+  // The picture fades in the first time it plays, then keeps its last frame through a reconnect.
+  const [seen, setSeen] = useState(false);
 
   useEffect(() => {
     const feed = new Feed(video.current!, '/api/feed', setState);
@@ -26,25 +31,24 @@ export function CameraTile({ name, area, order }: { name: string; area: CSSPrope
     };
   }, []);
 
-  const [label, color] = LABELS[state];
+  useEffect(() => {
+    if (state === 'live') setSeen(true);
+  }, [state]);
+
   return (
-    <Panel area={area} order={order} className={`camera feed-${state}`}>
-      <div className="tile-head">
-        <span className="title">CAM-01 // {name}</span>
-        <span className="state">
-          <Dot color={color} />
-          {label}
-        </span>
+    <Tile order={order} className={`camera ${state}${seen ? ' seen' : ''}`}>
+      <div className="picture">
+        <video ref={video} muted playsInline disablePictureInPicture disableRemotePlayback />
+        {state !== 'live' && (
+          <div className="veil">
+            <VideoOff />
+          </div>
+        )}
       </div>
-      <div className="picture-area">
-        <div className="picture">
-          <video ref={video} muted playsInline disablePictureInPicture disableRemotePlayback />
-          <i className="corner tl" />
-          <i className="corner tr" />
-          <i className="corner bl" />
-          <i className="corner br" />
-        </div>
+      <div className="caption">
+        <span>{name}</span>
+        <span className="feed-state">{LABELS[state]}</span>
       </div>
-    </Panel>
+    </Tile>
   );
 }
