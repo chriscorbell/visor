@@ -1,22 +1,26 @@
-/* A quiet instrument panel: warm grey type on charcoal, and color only where
-   something needs a look. Sizes are in rem, and 1rem is 10 px on a 1280×800
-   screen: the root font size follows the viewport, so the layout fills any
-   screen. dvh, because a mobile browser's vh assumes its toolbar is hidden. */
+/* A terminal HUD in grays, with color only for what needs a look: amber for
+   a warning, red for trouble. Sizes are in rem, and 1rem is 10 px on a 1280×800 screen:
+   the root font size follows the viewport, so the grid fills any screen.
+   dvh, because a mobile browser's vh assumes its toolbar is hidden. */
+
+@property --accent {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #ececec;
+}
 
 :root {
-  --bg: #0f0f0e;
-  --surface: #191917;
-  --surface-dim: #141413;
-  --line: #2b2a27;
-  --text-1: #edebe6;
-  --text-2: #a7a59f;
-  --text-3: #85837d;
-  --ok: #5fbf8a;
-  --warn: #f2a541;
-  --crit: #f2545b;
-  --warn-surface: #2a2116;
-  --crit-surface: #2d1719;
-  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --bg: #050505;
+  --panel: #0b0b0b;
+  --hi: #ececec;
+  --text: #d0d0d0;
+  --muted: #7d7d7d;
+  --faint: rgb(125 125 125 / 0.8);
+  --amber: #ffb020;
+  --red: #ff3b4a;
+  --edge: rgb(255 255 255 / 0.16);
+  --glow: rgb(255 255 255 / 0.35);
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
   font-size: min(0.78125vw, 1.25dvh);
   color-scheme: dark;
 }
@@ -37,9 +41,8 @@ body,
 }
 
 body {
-  font-family: 'IBM Plex Sans Variable', system-ui, sans-serif;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-1);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  color: var(--text);
   user-select: none;
   -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent;
@@ -48,175 +51,305 @@ body {
   -moz-text-size-adjust: none;
 }
 
-svg.lucide {
-  flex: none;
-  width: 1.1em;
-  height: 1.1em;
-  stroke-width: 2;
-}
-
-.warn {
-  --level: var(--warn);
-}
-.crit {
-  --level: var(--crit);
-}
-
-/* ---- layout ------------------------------------------------------------------ */
-
 .screen {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 56rem;
-  gap: 1.2rem;
+  grid-template-rows: 4rem minmax(0, 1fr);
+  gap: 0.8rem;
   height: 100%;
-  padding: 1.6rem;
+  padding: 0.6rem 1.2rem 1.2rem;
 }
 
-.machines {
+.grid {
   display: grid;
-  grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
-  grid-template-rows: repeat(var(--rows), minmax(0, 1fr));
-  gap: 1.2rem;
-  min-height: 0;
-  transition: opacity 600ms ease;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-rows: repeat(4, minmax(0, 1fr));
+  gap: 0.8rem;
 }
 
-.frozen .machines {
-  opacity: 0.4;
+.glyph {
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.15em;
+  stroke-width: 2.5;
 }
 
-.side {
-  display: grid;
-  grid-template-rows: 7.2rem auto minmax(0, 1fr);
-  gap: 1.2rem;
-  min-height: 0;
+.dot {
+  display: inline-block;
+  width: 0.6rem;
+  height: 0.6rem;
+  margin-right: 0.6rem;
+  border-radius: 50%;
+  background: var(--dot);
+  box-shadow: 0 0 0.5rem var(--dot);
+  vertical-align: 0.05rem;
+  transition: background-color 400ms var(--ease), box-shadow 400ms var(--ease);
 }
 
-.side.no-camera {
-  grid-template-rows: 7.2rem minmax(0, 1fr);
+/* ---- header ------------------------------------------------------------------ */
+
+.header {
+  display: flex;
+  align-items: baseline;
+  gap: 2.2rem;
+  padding-top: 1rem;
+  font-weight: 700;
+  /* A ruler along the bottom edge. */
+  background:
+    linear-gradient(rgb(255 255 255 / 0.2) 0 0) left bottom / 100% 1px no-repeat,
+    repeating-linear-gradient(to right, rgb(255 255 255 / 0.36) 0 1px, transparent 1px 8rem) left bottom / 100% 0.6rem
+      no-repeat,
+    repeating-linear-gradient(to right, rgb(255 255 255 / 0.36) 0 1px, transparent 1px 0.8rem) left bottom / 100% 0.3rem
+      no-repeat;
 }
 
-.tile {
+.logo {
+  font-size: 1.8rem;
+  letter-spacing: 0.25em;
+  color: var(--hi);
+  text-shadow: 0 0 0.8rem var(--glow);
+}
+
+.sub,
+.info {
+  font-size: 1rem;
+  letter-spacing: 0.15em;
+  color: var(--muted);
+}
+
+.sub {
+  margin-left: -1rem;
+  margin-right: auto;
+}
+
+.clock {
+  font-size: 1.8rem;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 0.6rem var(--glow);
+}
+
+/* ---- panels ------------------------------------------------------------------ */
+
+.panel {
+  --cut: 1.4rem;
+  --shape: polygon(0 0, calc(100% - var(--cut)) 0, 100% var(--cut), 100% 100%, 0 100%);
+  position: relative;
   display: flex;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  padding: 1.6rem;
-  border-radius: 1rem;
-  background: var(--surface);
-  transition: background-color 600ms ease;
-  animation: rise 500ms var(--ease) backwards;
-  animation-delay: calc(var(--i, 0) * 40ms);
+  padding: 1.2rem;
+  clip-path: var(--shape);
+  background: var(--edge);
+  transition: --accent 400ms var(--ease);
+  animation: panel-in 600ms var(--ease) both;
+  animation-delay: calc(var(--i, 0) * 50ms);
 }
 
-.tile-title {
-  margin: 0;
-  font-size: 1.3rem;
-  font-weight: 500;
-  color: var(--text-3);
+/* The plate, with faint scanlines. */
+.panel::before {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  clip-path: var(--shape);
+  background:
+    repeating-linear-gradient(to bottom, rgb(255 255 255 / 0.03) 0 1px, transparent 1px 0.3rem),
+    var(--panel);
 }
 
-/* ---- machines ---------------------------------------------------------------- */
+/* Brackets on the top-left and bottom-right corners, and along the cut. */
+.panel::after {
+  --arm: 1.2rem;
+  --t: 0.15rem;
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--accent) 0 0) left top / var(--arm) var(--t) no-repeat,
+    linear-gradient(var(--accent) 0 0) left top / var(--t) var(--arm) no-repeat,
+    linear-gradient(var(--accent) 0 0) right bottom / var(--arm) var(--t) no-repeat,
+    linear-gradient(var(--accent) 0 0) right bottom / var(--t) var(--arm) no-repeat,
+    linear-gradient(to top right, transparent calc(50% - 0.17rem), var(--accent) 0 50%, transparent 0) right top /
+      var(--cut) var(--cut) no-repeat;
+}
 
-.machine-head {
+.panel > * {
+  position: relative;
+  z-index: 1;
+}
+
+.accent-hi {
+  --accent: var(--hi);
+}
+.accent-amber {
+  --accent: var(--amber);
+}
+.accent-red {
+  --accent: var(--red);
+}
+.accent-muted {
+  --accent: var(--muted);
+}
+.accent-faint {
+  --accent: rgb(125 125 125 / 0.47);
+}
+
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.8rem);
+  }
+}
+
+.title {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.tile-head {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
-  gap: 0.8rem;
+  gap: 1rem;
+  padding-right: 0.8rem;
   white-space: nowrap;
 }
 
 .name {
-  overflow: hidden;
-  font-size: 2rem;
-  font-weight: 600;
-  line-height: 2.4rem;
-  text-overflow: ellipsis;
-  transition: color 400ms ease;
+  font-size: 1.5rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  transition: color 400ms var(--ease);
 }
 
 .state {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  font-size: 1.2rem;
-  color: var(--text-3);
-}
-
-.dot {
-  flex: none;
-  width: 0.7rem;
-  height: 0.7rem;
-  border-radius: 50%;
-  background: var(--ok);
+  font-size: 1rem;
+  color: var(--muted);
 }
 
 .role {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  min-height: 1.8rem;
-  margin-top: 0.2rem;
+  margin-top: 0.3rem;
   overflow: hidden;
-  font-size: 1.3rem;
-  line-height: 1.8rem;
-  color: var(--text-2);
+  font-size: 0.95rem;
+  letter-spacing: 0.08em;
+  color: var(--muted);
   text-overflow: ellipsis;
+  text-transform: uppercase;
   white-space: nowrap;
 }
 
-.readings {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-height: 0;
-  transition: opacity 600ms ease;
+.role.alert {
+  color: var(--red);
 }
 
-.cpu {
+.foot {
   display: flex;
-  flex: 1 1 0;
-  align-items: flex-end;
-  gap: 1.2rem;
-  min-height: 5.2rem;
-  margin-top: 1.2rem;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 1rem;
+  color: var(--muted);
+  white-space: pre;
 }
 
-/* Wide enough for 100%, so the history beside it doesn't shift as the number changes. */
-.cpu-reading {
-  display: flex;
-  flex: none;
-  flex-direction: column;
-  width: 9.4rem;
+.net .glyph {
+  margin-right: 0.1rem;
 }
 
-.cpu-label {
+/* ---- bars -------------------------------------------------------------------- */
+
+.bars {
+  display: grid;
+  gap: 0.7rem;
+  margin-top: 1.1rem;
+}
+
+.bar-row {
+  display: grid;
+  grid-template-columns: 3.4rem minmax(0, 1fr) 4.6rem;
+  align-items: center;
+  height: 1.4rem;
+  color: var(--level);
+  transition: color 400ms var(--ease);
+}
+
+.level-ok {
+  --level: var(--text);
+}
+.level-warn {
+  --level: var(--amber);
+}
+.level-crit {
+  --level: var(--red);
+}
+
+.foot .level-warn,
+.foot .level-crit {
+  color: var(--level);
+}
+
+.bar-label {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.bar-value {
   font-size: 1.2rem;
-  color: var(--text-3);
+  text-align: right;
 }
 
-.cpu-value {
-  font-size: 4.4rem;
-  font-weight: 500;
-  line-height: 1;
-  letter-spacing: -0.02em;
-  color: var(--level, var(--text-1));
-  transition: color 400ms ease;
+/* 24 segments; the lit ones are a copy of the track, uncovered left to right. */
+.bar {
+  --gap: 0.2rem;
+  position: relative;
+  height: 0.7rem;
 }
 
-.cpu-value small {
-  margin-left: 0.2rem;
-  font-size: 2rem;
-  font-weight: 400;
-  letter-spacing: 0;
-  color: var(--text-3);
+.bar::before,
+.bar-fill {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to right, currentColor calc(100% - var(--gap)), transparent 0) left top /
+    calc((100% + var(--gap)) / 24) 100% repeat-x;
+}
+
+.bar::before {
+  opacity: 0.12;
+}
+
+.bar-fill {
+  opacity: 0.9;
+  clip-path: inset(0 calc(100% - var(--pct)) 0 0);
+  transition: clip-path 500ms var(--ease);
+}
+
+/* ---- history ----------------------------------------------------------------- */
+
+/* Everything else in a tile keeps its height; the history takes what's left. */
+.panel > * {
+  flex: none;
 }
 
 .history {
   position: relative;
-  flex: 1;
-  align-self: stretch;
-  border-bottom: 1px solid var(--line);
+  flex: 1 1 0;
+  min-height: 0;
+  margin: 0.6rem 0 0.6rem;
+  color: var(--text);
+  border-bottom: 1px dashed rgb(255 255 255 / 0.1);
+  background: linear-gradient(to right, rgb(255 255 255 / 0.08) 50%, transparent 0) left center / 0.6rem 1px repeat-x;
+}
+
+.history-label {
+  position: absolute;
+  top: -0.1rem;
+  left: 0;
+  font-size: 0.8rem;
+  color: var(--faint);
 }
 
 .sparkline {
@@ -227,247 +360,200 @@ svg.lucide {
   overflow: visible;
 }
 
-.sparkline-area {
-  fill: var(--text-1);
-  fill-opacity: 0.07;
+/* ---- machines ---------------------------------------------------------------- */
+
+.machine.lost .name,
+.machine.empty .name {
+  color: var(--muted);
 }
 
-.sparkline-line {
-  fill: none;
-  stroke: var(--text-1);
-  stroke-width: 1.5;
-  stroke-linejoin: round;
+.machine.empty .name {
+  opacity: 0.7;
 }
 
-/* Three rows even when a machine has two readings, so the tiles in a row line up. */
-.meters {
-  display: grid;
-  grid-template-rows: repeat(3, 1.8rem);
-  gap: 0.8rem;
-  margin-top: 1.4rem;
+.awaiting {
+  margin: auto;
+  font-size: 0.95rem;
+  letter-spacing: 0.08em;
+  color: var(--muted);
 }
 
-.meter {
-  display: grid;
-  grid-template-columns: 4.2rem minmax(0, 1fr) 4.4rem;
-  align-items: center;
-  gap: 0.8rem;
-  font-size: 1.3rem;
-  line-height: 1.8rem;
-}
-
-.meter-label {
-  color: var(--text-3);
-}
-
-/* The fill is square and the track rounds it, so scaling it doesn't squash its corners. */
-.meter-track {
-  height: 0.4rem;
-  overflow: hidden;
-  border-radius: 0.2rem;
-  background: var(--line);
-}
-
-.meter-fill {
-  display: block;
-  height: 100%;
-  background: var(--level, var(--text-2));
-  transform: scaleX(var(--f));
-  transform-origin: left;
-  transition:
-    transform 700ms var(--ease),
-    background-color 400ms ease;
-}
-
-.meter-value {
-  font-weight: 500;
-  text-align: right;
-  color: var(--level, var(--text-1));
-  transition: color 400ms ease;
-}
-
-.machine-foot {
-  display: flex;
-  gap: 1rem;
-  margin-top: 1.4rem;
-  font-size: 1.2rem;
-  color: var(--text-3);
-  white-space: nowrap;
-}
-
-.machine-foot span {
-  display: flex;
-  align-items: center;
-  gap: 0.2rem;
-}
-
-.machine-foot .temp {
-  margin-left: auto;
-  color: var(--level, inherit);
-  transition: color 400ms ease;
-}
-
-.placeholder {
+.signal-lost {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.8rem;
+  gap: 0.6rem;
   margin: auto;
-  font-size: 1.4rem;
-  color: var(--text-3);
-  animation: fade-in 400ms ease backwards;
+  font-size: 0.95rem;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  animation: fade-in 400ms var(--ease) both;
 }
 
-.placeholder svg.lucide {
-  width: 3.2rem;
-  height: 3.2rem;
-  stroke-width: 1.5;
+.signal-lost strong {
+  position: relative;
+  font-size: 1.6rem;
+  letter-spacing: 0.2em;
+  color: var(--red);
 }
 
-/* Four columns, past nine machines: the history and the uptime make room for the rest. */
-.machine {
-  container-type: inline-size;
+/* A pale echo just off the text. */
+.signal-lost strong::before {
+  content: attr(data-text);
+  position: absolute;
+  left: 0.15rem;
+  top: 0.1rem;
+  z-index: -1;
+  color: rgb(255 255 255 / 0.3);
+  white-space: nowrap;
 }
 
-@container (width < 16rem) {
-  .history,
-  .uptime,
-  .machine-foot .temp svg {
-    display: none;
-  }
-
-  .machine-foot {
-    gap: 0.6rem;
-  }
-
-  .meter {
-    grid-template-columns: 3.4rem minmax(0, 1fr) 3.8rem;
-    gap: 0.6rem;
-  }
+.signal-lost.down strong {
+  animation: blink 1s steps(1) infinite;
 }
 
-/* Up, but no numbers lately: the last ones stay, dimmed, on an amber plate. */
-.machine.stale {
-  background: var(--warn-surface);
+.signal-lost.up strong {
+  color: var(--amber);
 }
 
-.machine.stale .state {
-  color: var(--warn);
+.signal-lost.paused strong {
+  color: var(--muted);
 }
 
-.machine.stale .readings {
-  opacity: 0.4;
-}
+/* ---- fleet ------------------------------------------------------------------- */
 
-.machine.down {
-  background: var(--crit-surface);
-}
-
-.machine.down .dot {
-  background: var(--crit);
-  animation: breathe 1.6s ease-in-out infinite alternate;
-}
-
-.machine.down .placeholder {
-  font-size: 2rem;
-  font-weight: 600;
-  color: var(--crit);
-}
-
-.machine.paused .name,
-.machine.pending .name,
-.machine.absent .name {
-  color: var(--text-3);
-}
-
-.machine.absent {
-  background: var(--surface-dim);
-}
-
-.machine.alert {
-  background: var(--crit-surface);
-}
-
-.machine.alert .role {
-  color: var(--crit);
-}
-
-/* ---- status ------------------------------------------------------------------ */
-
-.status {
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1.6rem;
-  padding: 0 0.4rem;
-  background: none;
-}
-
-.when {
+.count {
   display: flex;
   align-items: baseline;
-  gap: 1.2rem;
-  white-space: nowrap;
+  gap: 1rem;
+  margin-top: 0.6rem;
+  font-size: 0.95rem;
+  letter-spacing: 0.08em;
+  color: var(--muted);
 }
 
-.clock {
-  font-size: 5.6rem;
-  font-weight: 500;
-  line-height: 1;
-  letter-spacing: -0.02em;
+.count strong {
+  font-size: 3rem;
+  letter-spacing: 0;
+  color: var(--level, var(--text));
+  text-shadow: 0 0 0.8rem var(--glow);
+  transition: color 400ms var(--ease);
 }
 
-.date {
-  font-size: 1.6rem;
-  color: var(--text-2);
+.fleet .bars {
+  margin-top: 0.4rem;
 }
 
-.fleet {
+/* ---- event log --------------------------------------------------------------- */
+
+.events {
   display: flex;
+  flex: 1;
   flex-direction: column;
-  align-items: flex-end;
-  gap: 0.4rem;
-  min-width: 0;
+  justify-content: flex-end;
+  min-height: 0;
+  margin: 1rem 0 0;
+  padding: 0;
+  overflow: hidden;
+  list-style: none;
+  font-size: 1rem;
+  line-height: 1.4rem;
+}
+
+.events li {
+  display: grid;
+  flex: none;
+  grid-template-columns: 7rem 7rem minmax(0, 1fr);
   white-space: nowrap;
+  animation: line-in 350ms var(--ease) both;
 }
 
-.fleet-count {
-  font-size: 2rem;
-  font-weight: 600;
-  line-height: 2.4rem;
-  color: var(--level, var(--text-1));
-  transition: color 400ms ease;
+.events time {
+  color: var(--faint);
 }
 
-.fleet-detail {
+.events .text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tone-info .text {
+  color: var(--muted);
+}
+.tone-good .text {
+  color: var(--hi);
+}
+.tone-warn .text {
+  color: var(--amber);
+}
+.tone-alert .text {
+  color: var(--red);
+}
+
+.events .prompt {
   display: flex;
   align-items: center;
-  gap: 1.2rem;
-  font-size: 1.3rem;
-  color: var(--level, var(--text-3));
-  animation: fade-in 400ms ease backwards;
+  gap: 0.4rem;
+  color: var(--hi);
+  animation: none;
 }
 
-.fleet-detail span {
-  display: flex;
-  align-items: center;
-  gap: 0.2rem;
+.cursor {
+  width: 0.6rem;
+  height: 1.1rem;
+  background: var(--hi);
+  animation: blink 1s steps(1) infinite;
+}
+
+@keyframes line-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.6rem);
+  }
 }
 
 /* ---- camera ------------------------------------------------------------------ */
 
 .camera {
-  gap: 0.8rem;
-  padding: 0;
-  background: none;
+  padding: 1.2rem 0.6rem 0.6rem;
 }
 
+.camera .tile-head {
+  padding: 0 1.6rem 0 0.6rem;
+}
+
+.camera .state {
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--text);
+}
+
+.feed-connecting .state {
+  color: var(--muted);
+}
+
+.feed-reconnecting .state {
+  color: var(--red);
+}
+
+.feed-live .dot {
+  animation: blink 1s steps(1) infinite;
+}
+
+.picture-area {
+  flex: 1;
+  min-height: 0;
+  margin-top: 0.8rem;
+  container-type: size;
+}
+
+/* The largest 16:9 picture that fits. */
 .picture {
   position: relative;
+  width: min(100cqw, 100cqh * 16 / 9);
   aspect-ratio: 16 / 9;
-  overflow: hidden;
-  border-radius: 1rem;
-  background: var(--surface);
+  margin: 0 auto;
+  background: #000;
 }
 
 .picture video {
@@ -475,136 +561,62 @@ svg.lucide {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  opacity: 0;
-  transition: opacity 400ms ease;
 }
 
-.camera.seen video {
+.picture::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgb(5 5 5 / 0.6);
+  opacity: 0;
+  transition: opacity 400ms var(--ease);
+}
+
+.camera:not(.feed-live) .picture::after {
   opacity: 1;
 }
 
-/* Only there while the picture isn't live, so nothing sits over the video while it plays. */
-.veil {
+.corner {
+  --arm: 1.6rem;
   position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  background: rgb(15 15 14 / 0.6);
-  color: var(--text-3);
-  animation: fade-in 400ms ease backwards;
+  z-index: 1;
+  width: var(--arm);
+  height: var(--arm);
+  border: 0 solid var(--hi);
 }
 
-.veil svg.lucide {
-  width: 3.2rem;
-  height: 3.2rem;
-  stroke-width: 1.5;
+.corner.tl {
+  top: 0;
+  left: 0;
+  border-width: 0.15rem 0 0 0.15rem;
 }
-
-.caption {
-  display: flex;
-  justify-content: space-between;
-  gap: 1.2rem;
-  padding: 0 0.4rem;
-  font-size: 1.4rem;
-  line-height: 1.8rem;
-  color: var(--text-2);
-  white-space: nowrap;
+.corner.tr {
+  top: 0;
+  right: 0;
+  border-width: 0.15rem 0.15rem 0 0;
 }
-
-.feed-state {
-  color: var(--text-3);
-  transition: color 400ms ease;
+.corner.bl {
+  bottom: 0;
+  left: 0;
+  border-width: 0 0 0.15rem 0.15rem;
 }
-
-.camera.connecting .feed-state {
-  color: var(--warn);
-}
-
-.camera.reconnecting .feed-state {
-  color: var(--crit);
-}
-
-/* ---- events ------------------------------------------------------------------ */
-
-.events {
-  gap: 1rem;
-}
-
-/* Rows that don't fit wrap into a second column, out of sight, so no row shows cut in half. */
-.events ol {
-  display: flex;
-  flex: 1;
-  flex-flow: column wrap;
-  align-content: flex-start;
-  min-height: 0;
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
-  list-style: none;
-}
-
-.events li {
-  display: grid;
-  flex: none;
-  width: 100%;
-  grid-template-columns: 5.6rem 8.4rem minmax(0, 1fr);
-  align-items: center;
-  height: 2.6rem;
-  font-size: 1.4rem;
-  white-space: nowrap;
-  animation: drop-in 400ms var(--ease) backwards;
-}
-
-.events time {
-  color: var(--text-3);
-}
-
-.events .source,
-.events .text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.events .source {
-  padding-right: 1rem;
-}
-
-.events .text {
-  color: var(--text-2);
-}
-
-.events .warn .text {
-  color: var(--warn);
-}
-.events .alert .text {
-  color: var(--crit);
+.corner.br {
+  right: 0;
+  bottom: 0;
+  border-width: 0 0.15rem 0.15rem 0;
 }
 
 /* ---- motion ------------------------------------------------------------------ */
 
-@keyframes rise {
-  from {
-    opacity: 0;
-    transform: translateY(0.8rem);
-  }
-}
-
-@keyframes drop-in {
-  from {
-    opacity: 0;
-    transform: translateY(-0.6rem);
+@keyframes blink {
+  50% {
+    opacity: 0.25;
   }
 }
 
 @keyframes fade-in {
   from {
     opacity: 0;
-  }
-}
-
-@keyframes breathe {
-  to {
-    opacity: 0.35;
   }
 }
 
