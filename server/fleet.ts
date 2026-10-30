@@ -48,6 +48,7 @@ class Node {
   tempC: number | null = null;
   netUpBps = 0;
   netDownBps = 0;
+  load1: number | null = null;
   lastSampleAt = 0;
   cpuHistory: number[] = [];
 
@@ -65,6 +66,7 @@ class Node {
     if ('g' in info) this.gpu = num(info.g);
     const temp = num(info.dt);
     if (temp !== null && temp > 0) this.tempC = temp;
+    if (Array.isArray(info.la)) this.load1 = num(info.la[0]);
   }
 
   /** A live sample from the agent, once a second. */
@@ -80,6 +82,7 @@ class Node {
       this.netUpBps = num(stats.b[0]) ?? 0;
       this.netDownBps = num(stats.b[1]) ?? 0;
     }
+    if (Array.isArray(stats.la)) this.load1 = num(stats.la[0]);
     const temp = num(info.dt);
     this.tempC = temp !== null && temp > 0 ? temp : null;
 
@@ -121,6 +124,7 @@ export class Fleet {
   readonly #nodes = new Map<string, Node>();
   readonly #events: LogEvent[] = [];
   readonly #alarms = new Map<string, number>();
+  readonly #cpuHistory: number[] = [];
   #nextEventId = 1;
   /** When the hub started sending samples. Until they arrive, machines that are up count as live. */
   #samplingSince = 0;
@@ -153,9 +157,9 @@ export class Fleet {
     node.name = system.name;
     const next = parseStatus(system.status);
     if (announce && next !== node.status) {
-      if (next === 'up') this.log(node.name, 'Online', 'good');
-      else if (next === 'down') this.log(node.name, 'Offline', 'alert');
-      else if (next === 'paused') this.log(node.name, 'Paused', 'info');
+      if (next === 'up') this.log(node.name, 'ONLINE', 'good');
+      else if (next === 'down') this.log(node.name, 'SIGNAL LOST', 'alert');
+      else if (next === 'paused') this.log(node.name, 'PAUSED', 'info');
     }
     node.status = next;
     node.applyInfo(system.info, Date.now());
@@ -171,15 +175,15 @@ export class Fleet {
     const was = node.unhealthyPools;
     node.applySample(stats, info, Date.now());
     for (const [name, health] of node.unhealthyPools) {
-      if (was.get(name) !== health) this.log(node.name, `${name} ${health.toLowerCase()}`, 'alert');
+      if (was.get(name) !== health) this.log(node.name, `${name} ${health}`, 'alert');
     }
     for (const name of was.keys()) {
-      if (!node.unhealthyPools.has(name)) this.log(node.name, `${name} healthy`, 'good');
+      if (!node.unhealthyPools.has(name)) this.log(node.name, `${name} ONLINE`, 'good');
     }
     this.#watch(node, 'CPU', node.cpu, 90, 70);
-    this.#watch(node, 'Memory', node.mem, 90, 80);
-    this.#watch(node, 'Disk', node.disk, 90, 85);
-    if (node.tempC !== null) this.#watch(node, 'Temperature', node.tempC, 85, 75, '°C');
+    this.#watch(node, 'MEM', node.mem, 90, 80);
+    this.#watch(node, 'DSK', node.disk, 90, 85);
+    if (node.tempC !== null) this.#watch(node, 'TEMP', node.tempC, 85, 75, '°C');
   }
 
   log(source: string, text: string, tone: Tone): void {
@@ -205,10 +209,10 @@ export class Fleet {
       this.#alarms.set(key, -now);
     } else if (value >= high && since !== undefined && since < 0 && now + since >= SUSTAIN_MS) {
       this.#alarms.set(key, now);
-      this.log(node.name, `${metric} high, ${Math.trunc(value)}${unit}`, 'warn');
+      this.log(node.name, `${metric} HIGH ${Math.trunc(value)}${unit}`, 'warn');
     } else if (value < clear && since !== undefined) {
       this.#alarms.delete(key);
-      if (since > 0) this.log(node.name, `${metric} back to ${Math.trunc(value)}${unit}`, 'info');
+      if (since > 0) this.log(node.name, `${metric} NOMINAL ${Math.trunc(value)}${unit}`, 'info');
     } else if (value < high && since !== undefined && since < 0) {
       this.#alarms.delete(key);
     }
@@ -232,11 +236,12 @@ export class Fleet {
       tempC: node.tempC,
       netUpBps: node.netUpBps,
       netDownBps: node.netDownBps,
+      load1: node.load1,
       cpuHistory: node.cpuHistory,
     };
   }
 
-  /** The whole screen's data, sent once a second. */
+  /** The whole screen's data. Called once a second, which also moves the fleet's CPU history on. */
   snapshot(link: Snapshot['link']): Snapshot {
     const now = Date.now();
     const byName = new Map([...this.#nodes.values()].map((n) => [n.name, n]));
@@ -248,13 +253,21 @@ export class Fleet {
   }
 
   #summary(now: number): FleetSummary {
-    const live = [...this.#nodes.values()].filter((n) => this.#live(n, now));
+    const nodes = [...this.#nodes.values()];
+    const live = nodes.filter((n) => this.#live(n, now));
     const sum = (f: (n: Node) => number) => live.reduce((total, n) => total + f(n), 0);
+    const cpu = live.length > 0 ? sum((n) => n.cpu) / live.length : 0;
+    this.#cpuHistory.push(cpu);
+    if (this.#cpuHistory.length > HISTORY) this.#cpuHistory.shift();
     return {
+      online: nodes.filter((n) => n.status === 'up').length,
+      total: nodes.length,
+      cpu,
       memUsedGb: sum((n) => n.memUsedGb),
       memTotalGb: sum((n) => n.memTotalGb),
       netUpBps: sum((n) => n.netUpBps),
       netDownBps: sum((n) => n.netDownBps),
+      cpuHistory: this.#cpuHistory,
     };
   }
 }

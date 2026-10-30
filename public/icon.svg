@@ -1,5 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108">
-  <!-- A minute of CPU: a light trace on charcoal. -->
-  <rect width="108" height="108" fill="#0f0f0e"/>
-  <path d="M24 64H40L48 44L60 74L68 54H84" fill="none" stroke="#edebe6" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- A visor slit: a pale bar across a dark, angled plate. -->
+  <rect width="108" height="108" fill="#050505"/>
+  <path d="M14 14H82L94 26V94H14Z" fill="#050505" stroke="#ececec" stroke-opacity=".2" stroke-width="2"/>
+  <path d="M26 48H82L76 60H32Z" fill="#ececec"/>
+  <path d="M70 51H76L74 57H68Z" fill="#7d7d7d"/>
 </svg>

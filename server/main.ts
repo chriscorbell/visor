@@ -17,7 +17,7 @@ const PORT = Number(env.PORT ?? 3150);
 const BUILD = env.BUILD ?? 'dev';
 const HUB_URL = (env.HUB_URL ?? '').replace(/\/$/, '');
 const FEED_URL = env.FEED_URL ?? '';
-const CAMERA_NAME = env.CAMERA_NAME || 'Camera';
+const CAMERA_NAME = env.CAMERA_NAME || 'CAMERA';
 const STATIC_DIR = fileURLToPath(new URL('../dist/', import.meta.url));
 /** After the last page closes, keep the hub polling this long, so a reload doesn't restart it. */
 const LINGER_MS = 60_000;
@@ -52,9 +52,9 @@ const hub = new Hub({
   listener: {
     link(next) {
       if (next === link) return;
-      if (next === 'live') fleet.log('hub', 'Connected', 'good');
-      else if (link === 'live') fleet.log('hub', 'Connection lost', 'alert');
-      else if (next === 'no-credentials') fleet.log('hub', 'No credentials set', 'alert');
+      if (next === 'live') fleet.log('hub', 'LINK ESTABLISHED', 'good');
+      else if (link === 'live') fleet.log('hub', 'LINK LOST', 'alert');
+      else if (next === 'no-credentials') fleet.log('hub', 'NO CREDENTIALS SET', 'alert');
       link = next;
     },
     systems: (systems) => fleet.replace(systems),
@@ -65,7 +65,7 @@ const hub = new Hub({
   },
 });
 
-fleet.log('visor', `Started, build ${BUILD.slice(0, 7)}`, 'info');
+fleet.log('visor', `BOOT // BUILD ${BUILD.slice(0, 7)}`, 'info');
 hub.start();
 
 // ---- pages watching ------------------------------------------------------------

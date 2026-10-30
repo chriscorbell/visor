@@ -1,13 +1,13 @@
 {
   "name": "visor",
   "short_name": "visor",
-  "description": "Fleet status and a camera",
+  "description": "Fleet telemetry and a camera",
   "start_url": "/",
   "scope": "/",
   "display": "fullscreen",
   "orientation": "landscape",
-  "background_color": "#0f0f0e",
-  "theme_color": "#0f0f0e",
+  "background_color": "#050505",
+  "theme_color": "#050505",
   "icons": [
     { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" },
     { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },

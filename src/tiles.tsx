@@ -1,148 +1,190 @@
-import { ArrowDown, ArrowUp, Hourglass, Pause, Thermometer, TriangleAlert, Unplug } from 'lucide-react';
-import type { ComponentProps } from 'react';
-import type { LogEvent, Machine, Slot } from '../shared/types.ts';
-import { clock, level, rate, uptime } from './format.ts';
-import { Meter, Sparkline, Tile } from './ui.tsx';
+import { ArrowDown, ArrowUp, TriangleAlert } from 'lucide-react';
+import type { CSSProperties } from 'react';
+import type { FleetSummary, LogEvent, Machine, Slot } from '../shared/types.ts';
+import { clock, level, rate, size, uptime } from './format.ts';
+import { Bar, Dot, Panel, Sparkline } from './ui.tsx';
+import type { Accent } from './ui.tsx';
 
-type MeterProps = ComponentProps<typeof Meter>;
+type Area = { area: CSSProperties; order: number };
 
-/**
- * Memory, storage, and then the GPU, another volume or the temperature.
- * Storage is the biggest ZFS pool where there is one, since the root disk of
- * a TrueNAS app container says nothing.
- */
-function meters(m: Machine): MeterProps[] {
-  const list: MeterProps[] = [{ label: 'Mem', value: m.mem, warn: 80, crit: 90 }];
-  const pct = (v: { usedGb: number; totalGb: number }) => (v.usedGb / v.totalGb) * 100;
-  if (m.pool?.zfs) list.push({ label: 'Pool', value: pct(m.pool), warn: 85, crit: 90 });
-  else list.push({ label: 'Disk', value: m.disk, warn: 85, crit: 90 });
-  if (m.gpu !== null) list.push({ label: 'GPU', value: m.gpu, warn: 75, crit: 90 });
-  else if (m.pool && !m.pool.zfs) list.push({ label: 'Vol', value: pct(m.pool), warn: 85, crit: 90 });
-  else if (m.tempC !== null) list.push({ label: 'Temp', value: m.tempC, unit: '°', warn: 75, crit: 85 });
-  return list;
-}
-
-/** A machine that isn't sending numbers: an icon and a word in place of its readings. */
-function Placeholder({ machine }: { machine: Machine | null }) {
-  if (machine?.status === 'down') {
-    return (
-      <div className="placeholder">
-        <Unplug />
-        Offline
-      </div>
-    );
-  }
-  if (machine?.status === 'paused') {
-    return (
-      <div className="placeholder">
-        <Pause />
-        Paused
-      </div>
-    );
-  }
+function Net({ up, down }: { up: number; down: number }) {
   return (
-    <div className="placeholder">
-      <Hourglass />
-      {machine ? 'Waiting' : 'Not reporting'}
-    </div>
+    <span className="net">
+      <ArrowUp className="glyph" />
+      {rate(up)} <ArrowDown className="glyph" />
+      {rate(down)}
+    </span>
   );
 }
 
+/** A bar's label and reading, and where it turns amber and red. */
+type Reading = [label: string, value: number, warn: number, crit: number];
+
 /**
- * One machine: its name and state, CPU as a number and a minute of history,
- * then memory, storage and one more reading as bars.
+ * The third bar: the biggest ZFS pool where there is one, since the root
+ * disk of a TrueNAS app container says nothing; otherwise the root disk.
  */
-export function MachineTile({ slot, order }: { slot: Slot; order: number }) {
+function third(m: Machine): Reading {
+  return m.pool?.zfs ? ['ZFS', (m.pool.usedGb / m.pool.totalGb) * 100, 85, 90] : ['DSK', m.disk, 85, 90];
+}
+
+/** The fourth bar: the GPU, else another volume, else the temperature. */
+function fourth(m: Machine): Reading | null {
+  if (m.gpu !== null) return ['GPU', m.gpu, 75, 90];
+  if (m.pool && !m.pool.zfs) return ['VOL', (m.pool.usedGb / m.pool.totalGb) * 100, 85, 90];
+  if (m.tempC !== null) return ['TMP', m.tempC, 75, 85];
+  return null;
+}
+
+function stateOf(m: Machine): [string, string] {
+  if (m.live) return [`UP ${uptime(m.uptimeSec)}`, 'hi'];
+  if (m.status === 'up') return ['STALE', 'amber'];
+  if (m.status === 'down') return ['OFFLINE', 'red'];
+  if (m.status === 'paused') return ['PAUSED', 'muted'];
+  return ['PENDING', 'muted'];
+}
+
+/** Gray while all is well; amber for a machine gone quiet, red for one that's down or has a sick pool. */
+function accentOf(m: Machine): Accent {
+  if (m.status === 'down' || (m.live && m.unhealthyPools.length > 0)) return 'red';
+  if (m.status === 'up' && !m.live) return 'amber';
+  return m.live ? 'hi' : 'muted';
+}
+
+/** One machine: its name, health, load bars and a minute of CPU history. */
+export function MachineTile({ slot, area, order }: { slot: Slot } & Area) {
   const m = slot.machine;
-  // Up but quiet for a while: the last readings stay, dimmed.
-  const stale = m?.status === 'up' && !m.live;
-  const state = !m ? 'absent' : m.live ? 'live' : stale ? 'stale' : m.status;
-  const alert = m?.live ? m.unhealthyPools[0] : undefined;
-  const list = m ? meters(m) : [];
-  const temp = m?.tempC != null && !list.some((x) => x.label === 'Temp') ? m.tempC : null;
+  if (!m) {
+    return (
+      <Panel area={area} order={order} accent="faint" className="machine empty">
+        <div className="tile-head">
+          <span className="name">{slot.name}</span>
+        </div>
+        <div className="role">{slot.role}</div>
+        <div className="awaiting">AWAITING AGENT</div>
+      </Panel>
+    );
+  }
+
+  const [stateText, stateColor] = stateOf(m);
+  const zfs = m.pool?.zfs ? m.pool : null;
+  const role = slot.role || m.gpuName || '';
+  const alert = m.unhealthyPools[0];
+  const bars: Reading[] = [['CPU', m.cpu, 75, 90], ['MEM', m.mem, 80, 90], third(m)];
+  const four = fourth(m);
+  if (four) bars.push(four);
+  const peak = Math.max(0, ...m.cpuHistory);
+  // The CPU history's scale follows the minute's peak, so a quiet machine isn't a flat line.
+  const scale = Math.min(100, Math.max(10, Math.ceil(peak / 10) * 10));
+  const temp = four?.[0] !== 'TMP' && m.tempC !== null ? m.tempC : null;
 
   return (
-    <Tile order={order} className={`machine ${state}${alert ? ' alert' : ''}`}>
-      <div className="machine-head">
-        <span className="name">{slot.name}</span>
-        {m?.live && (
-          <span className="state">
-            <span className="uptime">{uptime(m.uptimeSec)}</span>
-            <i className="dot" />
-          </span>
-        )}
-        {stale && <span className="state">No data</span>}
-        {m?.status === 'down' && <i className="dot" />}
+    <Panel area={area} order={order} accent={accentOf(m)} className={`machine ${m.live ? 'live' : 'lost'}`}>
+      <div className="tile-head">
+        <span className="name">{m.name}</span>
+        <span className="state">
+          <Dot color={stateColor} />
+          {stateText}
+        </span>
       </div>
-      {alert ? (
-        <div className="role">
-          <TriangleAlert />
-          {alert[0]} {alert[1].toLowerCase()}
+      {alert && m.live ? (
+        <div className="role alert">
+          <TriangleAlert className="glyph" /> {alert[0]} {alert[1]}
         </div>
       ) : (
-        <div className="role">{slot.role || m?.gpuName}</div>
+        <div className="role">
+          {role}
+          {zfs && ` // ${zfs.name} ${size(zfs.usedGb)}/${size(zfs.totalGb)}`}
+        </div>
       )}
 
-      {m && (m.live || stale) ? (
-        <div className="readings">
-          <div className="cpu">
-            <div className={`cpu-reading ${level(m.cpu, 75, 90)}`}>
-              <span className="cpu-label">CPU</span>
-              <span className="cpu-value">
-                {Math.round(m.cpu)}
-                <small>%</small>
-              </span>
-            </div>
-            <div className="history">
-              <Sparkline values={m.cpuHistory} />
-            </div>
-          </div>
-          <div className="meters">
-            {list.map((x) => (
-              <Meter key={x.label} {...x} />
+      {m.live ? (
+        <>
+          <div className="bars">
+            {bars.map(([label, pct, warn, crit]) => (
+              <Bar key={label} label={label} pct={pct} warn={warn} crit={crit} unit={label === 'TMP' ? '°' : '%'} />
             ))}
           </div>
-          <div className="machine-foot">
-            <span>
-              <ArrowUp />
-              {rate(m.netUpBps)}
-            </span>
-            <span>
-              <ArrowDown />
-              {rate(m.netDownBps)}
-            </span>
-            {temp !== null && (
-              <span className={`temp ${level(temp, 75, 85)}`}>
-                <Thermometer />
-                {Math.round(temp)}°
-              </span>
-            )}
+          <div className="history">
+            <span className="history-label">CPU 60S /{scale}%</span>
+            <Sparkline values={m.cpuHistory} scale={scale} />
           </div>
-        </div>
+          <div className="foot">
+            <Net up={m.netUpBps} down={m.netDownBps} />
+            <span>
+              {temp !== null && <span className={`level-${level(temp, 75, 85)}`}>{Math.trunc(temp)}°C</span>}
+              {temp !== null && m.load1 !== null && '  '}
+              {m.load1 !== null && `LA ${m.load1.toFixed(2)}`}
+            </span>
+          </div>
+        </>
       ) : (
-        <Placeholder machine={m} />
+        <div className={`signal-lost ${m.status}`}>
+          <strong data-text={m.status === 'paused' ? 'PAUSED' : 'SIGNAL LOST'}>
+            {m.status === 'paused' ? 'PAUSED' : 'SIGNAL LOST'}
+          </strong>
+          <span>NO TELEMETRY</span>
+        </div>
       )}
-    </Tile>
+    </Panel>
   );
 }
 
-/** The newest events first. Only rows that are new animate in. */
-export function EventLog({ events, order }: { events: LogEvent[]; order: number }) {
+/**
+ * The whole fleet at once: how many machines are up, and their combined load.
+ * The count turns red while a machine is down, and amber while one is quiet.
+ */
+export function FleetTile({ fleet, slots, area, order }: { fleet: FleetSummary; slots: Slot[] } & Area) {
+  const machines = slots.map((s) => s.machine);
+  const count = machines.some((m) => m?.status === 'down')
+    ? 'level-crit'
+    : machines.some((m) => !m || (m.status !== 'paused' && !m.live))
+      ? 'level-warn'
+      : '';
+  const mem = fleet.memTotalGb > 0 ? (fleet.memUsedGb / fleet.memTotalGb) * 100 : 0;
   return (
-    <Tile order={order} className="events">
-      <h2 className="tile-title">Events</h2>
-      <ol>
-        {events
-          .slice(-20)
-          .reverse()
-          .map((e) => (
-            <li key={e.id} className={e.tone}>
-              <time>{clock(e.at)}</time>
-              <span className="source">{e.source}</span>
-              <span className="text">{e.text}</span>
-            </li>
-          ))}
+    <Panel area={area} order={order} className="fleet">
+      <div className="title">FLEET // AGGREGATE</div>
+      <div className="count">
+        <strong className={count}>
+          {String(fleet.online).padStart(2, '0')}/{String(fleet.total).padStart(2, '0')}
+        </strong>
+        <span>NODES ONLINE</span>
+      </div>
+      <div className="bars">
+        <Bar label="CPU" pct={fleet.cpu} />
+        <Bar label="MEM" pct={mem} warn={80} />
+      </div>
+      <div className="history">
+        <Sparkline values={fleet.cpuHistory} />
+      </div>
+      <div className="foot">
+        <Net up={fleet.netUpBps} down={fleet.netDownBps} />
+        <span>
+          {size(fleet.memUsedGb)} / {size(fleet.memTotalGb)} RAM
+        </span>
+      </div>
+    </Panel>
+  );
+}
+
+/** The newest events, oldest at the top, with a blinking cursor under them. */
+export function LogTile({ events, area, order }: { events: LogEvent[] } & Area) {
+  return (
+    <Panel area={area} order={order} className="log">
+      <div className="title">EVENT LOG</div>
+      <ol className="events">
+        {events.map((e) => (
+          <li key={e.id} className={`tone-${e.tone}`}>
+            <time>{clock(e.at)}</time>
+            <span className="source">{e.source.slice(0, 9)}</span>
+            <span className="text">{e.text}</span>
+          </li>
+        ))}
+        <li className="prompt">
+          &gt;<i className="cursor" />
+        </li>
       </ol>
-    </Tile>
+    </Panel>
   );
 }
